@@ -39,16 +39,6 @@ An easier secure option is:
 
 The script prompts for the sender email and app password at runtime. It does not save the password in the project or database.
 
-### Resend API alternative
-
-If SMTP is blocked by your provider, use the Resend email API instead:
-
-```powershell
-.\start_backend_with_resend.ps1
-```
-
-It asks for a Resend API key and a verified sender email at runtime. Set up the API key and verified sender in your Resend account first. The application automatically uses Resend when those variables are present.
-
 ## Main endpoints
 
 - `POST /predict` — failure prediction from telemetry
