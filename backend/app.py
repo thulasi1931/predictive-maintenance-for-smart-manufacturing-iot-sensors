@@ -554,7 +554,9 @@ def predict_failure():
             "failure_type_probabilities": failure_type_probabilities,
             "machine_risk_history": machine_risk_history,
         })
-    except ValueError as error:
+    except Exception as error:
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(error)}), 400
 
 
