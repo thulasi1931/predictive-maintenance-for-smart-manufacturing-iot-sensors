@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 
-const API = "http://127.0.0.1:5000";
+const API = "";
 
 export default function Auth({ onAuthenticated }) {
   const [mode, setMode] = useState("login");

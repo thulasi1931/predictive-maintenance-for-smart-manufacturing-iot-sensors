@@ -159,9 +159,14 @@ def asset_search():
     return jsonify(matched_assets[:25] + get_custom_assets(query))
 
 
-@app.get("/assets/<asset_id>")
+@app.get("/assets/<path:asset_id>")
 def asset_details(asset_id: str):
-    """Return the actual AI4I telemetry record for a selected Product ID."""
+    """Return static asset file if it exists in frontend/dist/assets, or return AI4I telemetry record."""
+    frontend_assets_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist", "assets")
+    asset_file_path = os.path.join(frontend_assets_dir, asset_id)
+    if os.path.isfile(asset_file_path):
+        return send_from_directory(frontend_assets_dir, asset_id)
+
     if ASSET_CATALOG_PATH.exists():
         assets = json.loads(ASSET_CATALOG_PATH.read_text(encoding="utf-8"))
         for asset in assets:

@@ -6,7 +6,7 @@ import Auth from "./Auth";
 import Metrics from "./Metrics";
 import "./styles.css";
 
-const API = "http://127.0.0.1:5000";
+const API = "";
 const initialReading = { machine_id: "M14860", type: "M", air_temperature: 300.1, process_temperature: 310.6, rotational_speed: 1500, torque: 40, tool_wear: 100 };
 const sensors = [["air_temperature", "Air temperature (K)"], ["process_temperature", "Process temperature (K)"], ["rotational_speed", "Rotational speed (rpm)"], ["torque", "Torque (Nm)"], ["tool_wear", "Tool wear (min)"]];
 
