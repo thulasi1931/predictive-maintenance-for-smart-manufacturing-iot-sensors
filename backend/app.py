@@ -10,6 +10,7 @@ import smtplib
 import secrets
 import urllib.error
 import urllib.request
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from email.message import EmailMessage
@@ -430,11 +431,11 @@ def send_email(recipient: str, subject: str, message: str) -> str:
     email.set_content(message)
     try:
         if port == 465:
-            with smtplib.SMTP_SSL(host, port, timeout=15) as server:
+            with smtplib.SMTP_SSL(host, port, timeout=5) as server:
                 server.login(username, password)
                 server.send_message(email)
         else:
-            with smtplib.SMTP(host, port, timeout=15) as server:
+            with smtplib.SMTP(host, port, timeout=5) as server:
                 server.starttls()
                 server.login(username, password)
                 server.send_message(email)
@@ -502,8 +503,11 @@ def predict_failure():
                 reading,
                 recommended_action,
             )
-            email_status_msg = send_email(settings["email_recipient"], email_subject, email_body)
-            save_notification("Email", settings["email_recipient"], email_body, "Critical", email_status_msg)
+            email_status_msg = "dispatched in background"
+            def _async_email_worker():
+                status = send_email(settings["email_recipient"], email_subject, email_body)
+                save_notification("Email", settings["email_recipient"], email_body, "Critical", status)
+            threading.Thread(target=_async_email_worker, daemon=True).start()
 
         # Get recent 6 predictions for machine-level risk history
         recent_machine_preds = get_recent_predictions(limit=6, machine_id=reading["Machine ID"])
