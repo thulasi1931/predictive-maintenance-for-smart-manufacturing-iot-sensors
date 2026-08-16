@@ -1,29 +1,4 @@
-# Dependencies
-node_modules/
-.venv/
-venv/
-env/
-
-# Python cache & artifacts
-__pycache__/
-*.py[cod]
-*$py.class
-*.ipynb_checkpoints/
-artifacts/
-
-# Frontend build output
-dist/
-dist-ssr/
-*.local
-
-# Environment secrets
-.env
-.env.*
-backend/.env
-backend/.env.*
-
-# Logs & temp
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Ignore SQLite database files
+*.db
+*.db-shm
+*.db-wal
