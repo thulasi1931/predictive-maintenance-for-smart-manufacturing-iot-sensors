@@ -16,7 +16,7 @@ from email.message import EmailMessage
 
 import joblib
 import pandas as pd
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.security import check_password_hash
 
 
@@ -64,6 +64,17 @@ REQUIRED_FIELDS = {
 }
 
 app = Flask(__name__)
+
+# Serve the built frontend (frontend/dist) for any route
+@app.route('/', defaults={"path": ""})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    # If the file exists, serve it; otherwise serve index.html (SPA fallback)
+    full_path = os.path.join(frontend_dir, path)
+    if path != "" and os.path.isfile(full_path):
+        return send_from_directory(frontend_dir, path)
+    return send_from_directory(frontend_dir, "index.html")
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "hackathon-demo-change-me")
 model = joblib.load(MODEL_PATH)
 failure_type_models = joblib.load(FAILURE_TYPE_MODEL_PATH) if FAILURE_TYPE_MODEL_PATH.exists() else None
@@ -380,20 +391,7 @@ Notification dispatched by MaintAI IoT Edge System
 def send_email(recipient: str, subject: str, message: str) -> str:
     """Send real email via Resend API or SMTP (including Gmail App Password)."""
     # 1. Resend API if configured
-    resend_key = os.getenv("RESEND_API_KEY")
-    resend_from = os.getenv("EMAIL_FROM")
-    if resend_key and resend_from:
-        request_obj = urllib.request.Request(
-            "https://api.resend.com/emails",
-            data=json.dumps({"from": resend_from, "to": [recipient], "subject": subject, "text": message}).encode("utf-8"),
-            headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request_obj, timeout=15):
-                return "sent via Resend API"
-        except urllib.error.URLError as error:
-            return f"not sent via Resend API: {error}"
+    # Resend integration removed; using SMTP only
 
     # 2. SMTP / Gmail App Password
     settings = get_notification_settings()
