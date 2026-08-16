@@ -3,6 +3,15 @@
 Run from the project folder with: python backend/app.py
 """
 
+import codecs
+import encodings.latin_1
+import encodings.aliases
+encodings.aliases.aliases["latin1"] = "latin_1"
+encodings.aliases.aliases["latin-1"] = "latin_1"
+codecs.lookup("latin1")
+codecs.lookup("latin-1")
+codecs.lookup("utf-8")
+
 import sys
 import json
 import os
