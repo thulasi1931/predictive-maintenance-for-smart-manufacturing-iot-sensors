@@ -65,8 +65,22 @@ REQUIRED_FIELDS = {
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "hackathon-demo-change-me")
-model = joblib.load(MODEL_PATH)
-failure_type_models = joblib.load(FAILURE_TYPE_MODEL_PATH) if FAILURE_TYPE_MODEL_PATH.exists() else None
+
+_model = None
+_failure_type_models = None
+
+def get_model():
+    global _model
+    if _model is None and MODEL_PATH.exists():
+        _model = joblib.load(MODEL_PATH)
+    return _model
+
+def get_failure_type_models():
+    global _failure_type_models
+    if _failure_type_models is None and FAILURE_TYPE_MODEL_PATH.exists():
+        _failure_type_models = joblib.load(FAILURE_TYPE_MODEL_PATH)
+    return _failure_type_models
+
 initialise_database()
 
 
@@ -419,7 +433,10 @@ def predict_failure():
     try:
         reading = validate_sensor_reading(request.get_json(silent=True))
         features = add_engineered_features(pd.DataFrame([reading]))
-        risk_probability = float(model.predict_proba(features)[0, 1])
+        loaded_model = get_model()
+        if not loaded_model:
+            return jsonify({"error": "ML model is loading or unavailable."}), 503
+        risk_probability = float(loaded_model.predict_proba(features)[0, 1])
         will_fail = risk_probability >= 0.50
 
         # Email alert streak triggers when machine has risk >= 60% (0.60)
@@ -431,10 +448,11 @@ def predict_failure():
         downtime_cost_at_risk = round(risk_probability * 15000, 2)
         
         failure_type_probabilities = {}
-        if failure_type_models:
+        loaded_ft_models = get_failure_type_models()
+        if loaded_ft_models:
             failure_type_probabilities = {
                 FAILURE_TYPE_NAMES[code]: round(float(type_model.predict_proba(features)[0, 1]), 4)
-                for code, type_model in failure_type_models.items()
+                for code, type_model in loaded_ft_models.items()
             }
         likely_failure_types = [
             name for name, prob in failure_type_probabilities.items() if prob >= 0.50
