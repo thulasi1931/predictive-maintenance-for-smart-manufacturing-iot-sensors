@@ -95,6 +95,16 @@ def get_failure_type_models():
 
 initialise_database()
 
+# Pre-warm ML models in background thread so predictions respond instantly
+def _warmup_models():
+    try:
+        get_model()
+        get_failure_type_models()
+    except Exception as e:
+        print(f"Model warmup warning: {e}")
+
+threading.Thread(target=_warmup_models, daemon=True).start()
+
 
 @app.after_request
 def allow_frontend_requests(response):
