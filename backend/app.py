@@ -64,17 +64,6 @@ REQUIRED_FIELDS = {
 }
 
 app = Flask(__name__)
-
-# Serve the built frontend (frontend/dist) for any route
-@app.route('/', defaults={"path": ""})
-@app.route('/<path:path>')
-def serve_frontend(path):
-    frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
-    # If the file exists, serve it; otherwise serve index.html (SPA fallback)
-    full_path = os.path.join(frontend_dir, path)
-    if path != "" and os.path.isfile(full_path):
-        return send_from_directory(frontend_dir, path)
-    return send_from_directory(frontend_dir, "index.html")
 app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "hackathon-demo-change-me")
 model = joblib.load(MODEL_PATH)
 failure_type_models = joblib.load(FAILURE_TYPE_MODEL_PATH) if FAILURE_TYPE_MODEL_PATH.exists() else None
@@ -516,6 +505,18 @@ def predict_failure():
         })
     except ValueError as error:
         return jsonify({"error": str(error)}), 400
+
+
+
+# Serve the built frontend (frontend/dist) for any remaining route (SPA fallback)
+@app.route('/', defaults={"path": ""})
+@app.route('/<path:path>')
+def serve_frontend(path):
+    frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+    full_path = os.path.join(frontend_dir, path)
+    if path != "" and os.path.isfile(full_path):
+        return send_from_directory(frontend_dir, path)
+    return send_from_directory(frontend_dir, "index.html")
 
 
 if __name__ == "__main__":
