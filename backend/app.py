@@ -475,19 +475,22 @@ def predict_failure():
         downtime_cost_at_risk = round(risk_probability * 15000, 2)
         
         failure_type_probabilities = {}
-        loaded_ft_models = get_failure_type_models()
-        if loaded_ft_models:
-            failure_type_probabilities = {
-                FAILURE_TYPE_NAMES[code]: round(float(type_model.predict_proba(features)[0, 1]), 4)
-                for code, type_model in loaded_ft_models.items()
-            }
-        likely_failure_types = [
-            name for name, prob in failure_type_probabilities.items() if prob >= 0.50
-        ]
-        most_likely_failure_type = (
-            max(failure_type_probabilities, key=failure_type_probabilities.get)
-            if failure_type_probabilities else None
-        )
+        most_likely_failure_type = None
+        likely_failure_types = []
+        if will_fail:
+            loaded_ft_models = get_failure_type_models()
+            if loaded_ft_models:
+                failure_type_probabilities = {
+                    FAILURE_TYPE_NAMES[code]: round(float(type_model.predict_proba(features)[0, 1]), 4)
+                    for code, type_model in loaded_ft_models.items()
+                }
+            likely_failure_types = [
+                name for name, prob in failure_type_probabilities.items() if prob >= 0.50
+            ]
+            most_likely_failure_type = (
+                max(failure_type_probabilities, key=failure_type_probabilities.get)
+                if failure_type_probabilities else None
+            )
         
         save_prediction(reading, int(will_fail), risk_probability)
         
