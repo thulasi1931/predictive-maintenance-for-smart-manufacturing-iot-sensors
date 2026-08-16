@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: predictive-maintenance-backend
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python backend/app.py
+    # Optionally you can add envVars here
+    envVars: {}
+
+  - type: static
+    name: predictive-maintenance-frontend
+    buildCommand: cd frontend && npm ci && npm run build
+    publishPath: frontend/dist
+    envVars: {}
