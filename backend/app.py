@@ -17,6 +17,12 @@ from email.message import EmailMessage
 
 import joblib
 import pandas as pd
+import sklearn
+import sklearn.base
+import sklearn.compose
+import sklearn.ensemble
+import sklearn.pipeline
+import sklearn.preprocessing
 from flask import Flask, jsonify, request, send_from_directory
 from werkzeug.security import check_password_hash
 
