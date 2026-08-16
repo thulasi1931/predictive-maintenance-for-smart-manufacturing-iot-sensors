@@ -72,13 +72,24 @@ _failure_type_models = None
 def get_model():
     global _model
     if _model is None and MODEL_PATH.exists():
-        _model = joblib.load(MODEL_PATH)
+        loaded = joblib.load(MODEL_PATH)
+        if hasattr(loaded, "named_steps") and "model" in loaded.named_steps:
+            loaded.named_steps["model"].n_jobs = 1
+        elif hasattr(loaded, "n_jobs"):
+            loaded.n_jobs = 1
+        _model = loaded
     return _model
 
 def get_failure_type_models():
     global _failure_type_models
     if _failure_type_models is None and FAILURE_TYPE_MODEL_PATH.exists():
-        _failure_type_models = joblib.load(FAILURE_TYPE_MODEL_PATH)
+        loaded = joblib.load(FAILURE_TYPE_MODEL_PATH)
+        for key, model_instance in loaded.items():
+            if hasattr(model_instance, "named_steps") and "model" in model_instance.named_steps:
+                model_instance.named_steps["model"].n_jobs = 1
+            elif hasattr(model_instance, "n_jobs"):
+                model_instance.n_jobs = 1
+        _failure_type_models = loaded
     return _failure_type_models
 
 initialise_database()
