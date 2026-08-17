@@ -1,7 +1,7 @@
 :root { font-family: Inter, system-ui, sans-serif; color: #1d2939; background: #f4f7fb; } * { box-sizing: border-box; } body { margin: 0; } .app { min-height: 100vh; display: flex; }
 
-/* Keep account control directly above the theme control in the sidebar. */
-.sidebar .logout { top: auto; right: auto; bottom: 100px; width: 190px; }
+/* Account and theme controls flow one after another in the navigation. */
+.sidebar .logout, .sidebar .theme-toggle { position: static; width: 100%; }
 .card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .card-heading h2 { margin-bottom: 6px; }
 .card-heading span, .forecast-card p { color: #667085; font-size: .86rem; }
@@ -11,7 +11,7 @@
 .forecast-normal h3, .forecast-risk h3 { margin: 0; }
 .forecast-values { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; font-size: .85rem; }
 .forecast-help { margin: 16px 0 0; color: #667085; font-size: .9rem; line-height: 1.5; }
-@media (max-width: 850px) { .card-heading { display: block; } .card-heading button { margin-top: 15px; } .sidebar .logout { top: auto; right: auto; bottom: 100px; } }
+@media (max-width: 850px) { .card-heading { display: block; } .card-heading button { margin-top: 15px; } }
 
 /* ── Dark mode ──────────────────────────────────── */
 .app[data-theme="dark"] { background: #0d1117; color: #e6edf3; }
@@ -31,6 +31,9 @@
 .app[data-theme="dark"] .risk-gauge-bar { background: #21262d; }
 .app[data-theme="dark"] .streak-badge { background: #2d1618; border-color: #7d2629; color: #f87171; }
 .app[data-theme="dark"] .risk-pill { background: #21262d; }
+.app[data-theme="dark"] .forecast-help, .app[data-theme="dark"] .forecast-card p, .app[data-theme="dark"] .forecast-card small, .app[data-theme="dark"] .card-heading span { color: #c9d1d9; }
+.app[data-theme="dark"] .forecast-normal { background: #123524; }
+.app[data-theme="dark"] .forecast-risk { background: #3b1d22; }
 /* ─────────────────────────────────────────────── */
 
 /* ── Risk Gauge, Streak & History Styling ──────── */
