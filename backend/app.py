@@ -424,10 +424,13 @@ def project_next_telemetry(records: list[dict]) -> dict:
     latest = ordered[-1]
     return {
         "Machine ID": latest["machine_id"], "Type": latest["product_type"],
-        "Air temperature [K]": next_value("air_temperature", 250, 400),
-        "Process temperature [K]": next_value("process_temperature", 250, 450),
-        "Rotational speed [rpm]": next_value("rotational_speed", 0),
-        "Torque [Nm]": next_value("torque", 0), "Tool wear [min]": next_value("tool_wear", 0),
+        # Keep projections inside the AI4I sensor operating envelopes. This
+        # prevents mixed/manual historical readings from producing impossible
+        # next values that would mislead a maintenance decision.
+        "Air temperature [K]": next_value("air_temperature", 295, 305),
+        "Process temperature [K]": next_value("process_temperature", 305, 320),
+        "Rotational speed [rpm]": next_value("rotational_speed", 1000, 3000),
+        "Torque [Nm]": next_value("torque", 0, 100), "Tool wear [min]": next_value("tool_wear", 0, 300),
     }
 
 
