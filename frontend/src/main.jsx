@@ -62,7 +62,21 @@ function App({ onLogout, theme, toggleTheme }) {
   const [search, setSearch] = useState("M14860");
   const [compareA, setCompareA] = useState("torque");
   const [compareB, setCompareB] = useState("tool_wear");
-  const [settings, setSettings] = useState({ email_enabled: false, email_recipient: "" });
+  const [showSenderPassword, setShowSenderPassword] = useState(false);
+  const [settings, setSettings] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("maintai_alert_settings") || "{}");
+      return {
+        email_enabled: saved.email_enabled ?? true,
+        email_recipient: saved.email_recipient || "",
+        smtp_username: "",
+        smtp_password: "",
+        smtp_configured: false,
+      };
+    } catch (e) {
+      return { email_enabled: true, email_recipient: "", smtp_username: "", smtp_password: "", smtp_configured: false };
+    }
+  });
   const [metrics, setMetrics] = useState(null);
   const [newAsset, setNewAsset] = useState({ asset_id: "CNC-001", asset_name: "New CNC Milling Machine", product_type: "M" });
   const [notice, setNotice] = useState("");
@@ -73,7 +87,21 @@ function App({ onLogout, theme, toggleTheme }) {
   async function loadForecast(assetId = search) { setForecastMessage("Creating a forecast from this machine's saved readings..."); const r = await fetch(`${API}/forecast?machine_id=${encodeURIComponent(assetId)}`); const data = await r.json(); if (!r.ok) { setForecast(null); setForecastMessage(data.error || "Unable to create a trend forecast."); return; } setForecast(data); setForecastMessage(""); }
   async function loadAlerts() { const r = await fetch(`${API}/alerts`); if (r.ok) setAlerts(await r.json()); }
   async function loadWorkOrders() { const r = await fetch(`${API}/work-orders`); if (r.ok) setWorkOrders(await r.json()); }
-  async function loadSettings() { const r = await fetch(`${API}/notification-settings`); if (r.ok) setSettings(await r.json()); }
+  async function loadSettings() {
+    const r = await fetch(`${API}/notification-settings`);
+    if (r.ok) {
+      const serverData = await r.json();
+      setSettings((old) => {
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem("maintai_alert_settings") || "{}"); } catch (e) {}
+        return {
+          ...serverData,
+          email_enabled: saved.email_enabled !== undefined ? saved.email_enabled : (serverData.email_enabled ?? true),
+          email_recipient: saved.email_recipient !== undefined && saved.email_recipient !== "" ? saved.email_recipient : (serverData.email_recipient || ""),
+        };
+      });
+    }
+  }
   async function loadMetrics() { const r = await fetch(`${API}/model-metrics`); if (r.ok) setMetrics(await r.json()); }
   async function searchAssets(value) { setSearch(value); const r = await fetch(`${API}/assets?q=${encodeURIComponent(value)}`); if (r.ok) setAssets(await r.json()); }
   async function loadSelectedAsset() {
@@ -92,7 +120,31 @@ function App({ onLogout, theme, toggleTheme }) {
   useEffect(() => { loadHistory(); loadAlerts(); loadWorkOrders(); loadSettings(); loadMetrics(); searchAssets("M14860"); return () => clearInterval(timer.current); }, []);
 
   function updateReading(event) { const { name, value } = event.target; setReading((old) => ({ ...old, [name]: value })); }
-  async function predict(event) { event?.preventDefault(); setNotice(""); const payload = { ...reading, air_temperature: Number(reading.air_temperature), process_temperature: Number(reading.process_temperature), rotational_speed: Number(reading.rotational_speed), torque: Number(reading.torque), tool_wear: Number(reading.tool_wear) }; const r = await fetch(`${API}/predict`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); const data = await r.json(); if (!r.ok) { setNotice(data.error); return; } setResult(data); setSearch(payload.machine_id); loadHistory(payload.machine_id); loadAlerts(); }
+  async function predict(event) {
+    event?.preventDefault();
+    setNotice("");
+    const payload = {
+      ...reading,
+      air_temperature: Number(reading.air_temperature),
+      process_temperature: Number(reading.process_temperature),
+      rotational_speed: Number(reading.rotational_speed),
+      torque: Number(reading.torque),
+      tool_wear: Number(reading.tool_wear),
+      email_recipient: (settings.email_recipient || "").trim(),
+      email_enabled: Boolean(settings.email_enabled),
+    };
+    const r = await fetch(`${API}/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok) { setNotice(data.error); return; }
+    setResult(data);
+    setSearch(payload.machine_id);
+    loadHistory(payload.machine_id);
+    loadAlerts();
+  }
   function simulateReading() { const air = +(298 + Math.random() * 4).toFixed(1); return { machine_id: reading.machine_id, type: reading.type, air_temperature: air, process_temperature: +(air + 8 + Math.random() * 4).toFixed(1), rotational_speed: Math.round(1200 + Math.random() * 700), torque: +(25 + Math.random() * 40).toFixed(1), tool_wear: Math.round(Math.random() * 250) }; }
   function toggleSimulation() { if (simulating) { clearInterval(timer.current); setSimulating(false); return; } const run = () => { const next = simulateReading(); setReading(next); predict({ preventDefault() { } }); }; run(); timer.current = setInterval(run, 5000); setSimulating(true); }
   async function resolveAlert(id) { await fetch(`${API}/alerts/${id}/resolve`, { method: "POST" }); loadAlerts(); }
@@ -100,21 +152,32 @@ function App({ onLogout, theme, toggleTheme }) {
   async function setWorkOrderStatus(id, status) { const r = await fetch(`${API}/work-orders/${id}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); const data = await r.json(); setNotice(data.message || data.error); loadWorkOrders(); }
   async function saveSettings(event) {
     event.preventDefault();
+    const recipientToSave = (settings.email_recipient || "").trim();
+    const localConfig = {
+      email_enabled: Boolean(settings.email_enabled),
+      email_recipient: recipientToSave,
+    };
+    try { localStorage.setItem("maintai_alert_settings", JSON.stringify(localConfig)); } catch (e) {}
     const r = await fetch(`${API}/notification-settings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...settings,
-        email_enabled: Boolean(settings.email_enabled),
-      }),
+      body: JSON.stringify(localConfig),
     });
     const data = await r.json();
-    setNotice(data.message || data.error);
-    loadSettings();
+    setNotice(data.message || `Saved! Alert recipient set to ${recipientToSave}`);
   }
   async function sendTestEmail() {
-    setNotice("Sending test email to recipient...");
-    const r = await fetch(`${API}/email-test`, { method: "POST" });
+    const targetRecipient = (settings.email_recipient || "").trim();
+    if (!targetRecipient) {
+      setNotice("Please enter an alert recipient email first.");
+      return;
+    }
+    setNotice(`Sending test email to ${targetRecipient}...`);
+    const r = await fetch(`${API}/email-test`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email_recipient: targetRecipient }),
+    });
     const data = await r.json();
     setNotice(data.message || data.error);
   }
@@ -133,7 +196,7 @@ function App({ onLogout, theme, toggleTheme }) {
       <div>
         <p>NOTIFICATION CONTROL</p>
         <h1>Email & SMTP Configuration</h1>
-        <span>Sender credentials & recipient settings are stored permanently in the database.</span>
+        <span>Sender credentials are loaded permanently from .env. Recipient email is configured for your device.</span>
       </div>
     </section>
     <form className="card" onSubmit={saveSettings}>
@@ -143,21 +206,48 @@ function App({ onLogout, theme, toggleTheme }) {
       </label>
       <label>
         Alert recipient email
-        <input type="email" value={settings.email_recipient || ""} onChange={(e) => setSettings((old) => ({ ...old, email_recipient: e.target.value }))} placeholder="maintenance-lead@factory.com" required />
+        <input
+          type="email"
+          value={settings.email_recipient || ""}
+          onChange={(e) => setSettings((old) => ({ ...old, email_recipient: e.target.value }))}
+          placeholder="your-email@gmail.com"
+          required
+        />
       </label>
       <label>
-        Sender Gmail address (Permanent)
-        <input type="email" value={settings.smtp_username || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_username: e.target.value }))} placeholder="yourname@gmail.com" />
+        Sender Gmail address (Permanent from .env)
+        <input
+          type="email"
+          value={settings.smtp_username || ""}
+          readOnly
+          style={{ background: "#f8fafc", cursor: "default" }}
+          placeholder="Configured in .env"
+        />
       </label>
       <label>
-        Sender 16-char Gmail App Password
-        <input type="password" value={settings.smtp_password || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_password: e.target.value }))} placeholder={settings.smtp_password_set ? "•••••••••••••••• (Saved Permanently)" : "Enter 16-character App Password"} />
+        Sender 16-char Gmail App Password (Permanent from .env)
+        <div style={{ display: "flex", gap: "8px" }}>
+          <input
+            type={showSenderPassword ? "text" : "password"}
+            value={settings.smtp_password || ""}
+            readOnly
+            style={{ background: "#f8fafc", cursor: "default", flex: 1 }}
+            placeholder="Configured in .env"
+          />
+          <button
+            type="button"
+            onClick={() => setShowSenderPassword((prev) => !prev)}
+            style={{ background: "#475467", padding: "0 14px", whiteSpace: "nowrap" }}
+          >
+            {showSenderPassword ? "Hide" : "Show password"}
+          </button>
+        </div>
       </label>
       <p style={{ fontSize: "0.82rem", color: "#667085", margin: "2px 0 8px", lineHeight: "1.45" }}>
-        💡 <b>Gmail Setup Guide:</b> Go to Google Account → Security → Turn on 2-Step Verification → Create an <b>App Password</b> (16 letters). Paste it here or into Render environment variables.
+        💡 <b>Sender Credentials:</b> Sender Gmail and 16-character App Password are permanent server settings loaded from <code>.env</code>. The alert recipient email above is saved specifically for your laptop.
       </p>
       <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
-        <button type="submit">Save settings permanently</button>
+        <button type="submit">Save settings</button>
         <button type="button" onClick={sendTestEmail} style={{ background: '#475467' }}>Send test email</button>
       </div>
     </form>

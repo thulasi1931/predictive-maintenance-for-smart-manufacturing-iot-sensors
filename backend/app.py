@@ -20,9 +20,20 @@ import secrets
 import urllib.error
 import urllib.request
 import threading
+import socket
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from email.message import EmailMessage
+
+# Force IPv4 resolution for SMTP hosts so Render's container runtime never fails with [Errno 101] Network is unreachable
+_orig_getaddrinfo = socket.getaddrinfo
+
+def _ipv4_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+    if host and "smtp" in str(host).lower():
+        family = socket.AF_INET
+    return _orig_getaddrinfo(host, port, family, type, proto, flags)
+
+socket.getaddrinfo = _ipv4_getaddrinfo
 
 import joblib
 import pandas as pd
@@ -373,16 +384,17 @@ def reset_password():
 
 @app.get("/notification-settings")
 def read_notification_settings():
-    """Return the selected email opt-in and SMTP configuration."""
+    """Return the sender SMTP configuration and server status."""
     settings = get_effective_email_settings()
-    safe_settings = dict(settings)
-    if safe_settings.get("smtp_password"):
-        safe_settings["smtp_password_set"] = True
-        safe_settings["smtp_password"] = "••••••••••••••••"
-    else:
-        safe_settings["smtp_password_set"] = False
-        safe_settings["smtp_password"] = ""
-    return jsonify(safe_settings)
+    return jsonify({
+        "email_enabled": bool(settings.get("email_enabled", True)),
+        "email_recipient": settings.get("email_recipient", ""),
+        "smtp_host": settings.get("smtp_host", "smtp.gmail.com"),
+        "smtp_port": settings.get("smtp_port", 587),
+        "smtp_username": settings.get("smtp_username", ""),
+        "smtp_password": settings.get("smtp_password", ""),
+        "smtp_configured": bool(settings.get("smtp_username") and settings.get("smtp_password")),
+    })
 
 
 @app.get("/email-status")
@@ -397,37 +409,31 @@ def email_status():
 
 @app.post("/notification-settings")
 def update_notification_settings():
-    """Save email opt-in, recipient, and SMTP credentials permanently to SQLite DB."""
+    """Save email opt-in and recipient email from user session."""
     payload = request.get_json(silent=True) or {}
     recipient = str(payload.get("email_recipient", "")).strip()
     enabled = bool(payload.get("email_enabled", False))
-    smtp_host = str(payload.get("smtp_host", "smtp.gmail.com")).strip() or "smtp.gmail.com"
-    smtp_port = int(payload.get("smtp_port", 587) or 587)
-    smtp_username = str(payload.get("smtp_username", "")).strip()
-    smtp_password = str(payload.get("smtp_password", "")).strip()
+    settings = get_effective_email_settings()
+    smtp_host = str(payload.get("smtp_host") or settings.get("smtp_host") or "smtp.gmail.com").strip()
+    smtp_port = int(payload.get("smtp_port") or settings.get("smtp_port") or 587)
+    smtp_username = str(payload.get("smtp_username") or settings.get("smtp_username") or "").strip()
+    smtp_password = str(payload.get("smtp_password") or settings.get("smtp_password") or "").strip()
 
     if enabled and ("@" not in recipient or "." not in recipient.rsplit("@", 1)[-1]):
         return jsonify({"error": "Enter a valid recipient email address before enabling notifications."}), 400
 
-    # Don't overwrite existing password with mask
-    if smtp_password.startswith("•"):
-        smtp_password = ""
-
-    # Clean internal spaces if user pasted 16-char app password format (e.g. "abcd efgh ijkl mnop")
-    if smtp_password and len(smtp_password.replace(" ", "")) == 16:
-        smtp_password = smtp_password.replace(" ", "")
-
     save_notification_settings(enabled, recipient, smtp_host, smtp_port, smtp_username, smtp_password)
-    return jsonify({"message": f"Alert settings saved. Notifications will be sent to {recipient or 'configured recipient'}."})
+    return jsonify({"message": f"Settings saved. Alerts will be sent to {recipient or 'configured recipient'}."})
 
 
 @app.post("/email-test")
 def test_email_notification():
-    """Send a user-requested test email to the opted-in recipient."""
+    """Send a user-requested test email to the user-entered recipient."""
+    payload = request.get_json(silent=True) or {}
     settings = get_effective_email_settings()
-    recipient = (settings.get("email_recipient") or "").strip()
+    recipient = str(payload.get("email_recipient") or settings.get("email_recipient") or "").strip()
     if not recipient or "@" not in recipient:
-        return jsonify({"error": "Please enter a valid recipient email address and save settings first."}), 400
+        return jsonify({"error": "Please enter a valid recipient email address first."}), 400
     
     ist_tz = timezone(timedelta(hours=5, minutes=30))
     time_ist = datetime.now(ist_tz).strftime("%Y-%m-%d %I:%M:%S %p IST")
@@ -668,7 +674,11 @@ def predict_failure():
                 most_likely_failure_type,
             )
             
-        if should_send_email and settings.get("email_enabled") and settings.get("email_recipient"):
+        raw_payload = request.get_json(silent=True) or {}
+        active_recipient = str(raw_payload.get("email_recipient") or settings.get("email_recipient") or "").strip()
+        active_email_enabled = bool(raw_payload.get("email_enabled") if "email_enabled" in raw_payload else settings.get("email_enabled", False))
+
+        if should_send_email and active_email_enabled and active_recipient:
             cause = most_likely_failure_type or "Equipment Thermal/Load Anomaly"
             recommended_action = "Inspect the machine immediately and reduce spindle load/tool wear." if will_fail else "Perform preventive inspection."
             email_subject, email_body = build_alert_email_content(
@@ -680,9 +690,9 @@ def predict_failure():
                 recommended_action,
             )
             email_status_msg = "dispatched in background"
-            def _async_email_worker():
-                status = send_email(settings["email_recipient"], email_subject, email_body)
-                save_notification("Email", settings["email_recipient"], email_body, "Critical", status)
+            def _async_email_worker(target_to=active_recipient):
+                status = send_email(target_to, email_subject, email_body)
+                save_notification("Email", target_to, email_body, "Critical", status)
             threading.Thread(target=_async_email_worker, daemon=True).start()
 
         # Get recent 6 predictions for machine-level risk history
