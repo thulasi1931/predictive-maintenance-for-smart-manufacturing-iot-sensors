@@ -13,25 +13,32 @@ const sensors = [["air_temperature", "Air temperature (K)"], ["process_temperatu
 export function formatIndianTime(timestampStr, includeDate = true) {
   if (!timestampStr) return "";
   try {
-    let dateObj;
-    if (typeof timestampStr === "string" && !timestampStr.includes("Z") && !timestampStr.includes("+") && timestampStr.includes(" ")) {
-      dateObj = new Date(timestampStr.replace(" ", "T") + "Z");
-    } else {
-      dateObj = new Date(timestampStr);
+    const cleanStr = String(timestampStr).trim();
+    if (cleanStr.includes("IST")) {
+      return cleanStr;
     }
-    if (isNaN(dateObj.getTime())) return timestampStr;
+    let dateObj;
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(cleanStr)) {
+      dateObj = new Date(cleanStr.replace(" ", "T") + "+05:30");
+    } else {
+      dateObj = new Date(cleanStr);
+    }
+    if (isNaN(dateObj.getTime())) return cleanStr;
+
+    const dateOptions = includeDate
+      ? { year: "numeric", month: "short", day: "numeric" }
+      : {};
+
     return new Intl.DateTimeFormat("en-IN", {
       timeZone: "Asia/Kolkata",
-      year: includeDate ? "numeric" : undefined,
-      month: includeDate ? "short" : undefined,
-      day: includeDate ? "numeric" : undefined,
+      ...dateOptions,
       hour: "2-digit",
       minute: "2-digit",
       second: "2-digit",
       hour12: true,
     }).format(dateObj);
   } catch (e) {
-    return timestampStr;
+    return String(timestampStr);
   }
 }
 
@@ -239,7 +246,7 @@ function App({ onLogout, theme, toggleTheme }) {
                 {result.consecutive_high_risk_readings > 0 && (
                   <div className="streak-badge">
                     ⚠ High Risk Streak: <b>{result.consecutive_high_risk_readings} consecutive reading(s)</b> (&ge; 60% risk)
-                    {result.streak_timestamp && <span> · Last: {result.streak_timestamp}</span>}
+                    {result.streak_timestamp && <span> · Last: {formatIndianTime(result.streak_timestamp)}</span>}
                     {result.email_alert_triggered && (
                       <div className="email-sent-badge">✉ High-Risk Email Alert Dispatched to Maintenance Team!</div>
                     )}
@@ -281,7 +288,7 @@ function App({ onLogout, theme, toggleTheme }) {
               <LineChart data={chartData}>
                 <XAxis dataKey="created_at" hide />
                 <YAxis />
-                <Tooltip />
+                <Tooltip labelFormatter={(label) => formatIndianTime(label)} />
                 <Line type="monotone" dataKey={compareA} stroke="#2563eb" strokeWidth={3} name={compareA} />
                 <Line type="monotone" dataKey={compareB} stroke="#f97316" strokeWidth={3} name={compareB} />
               </LineChart>

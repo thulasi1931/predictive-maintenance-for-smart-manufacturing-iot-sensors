@@ -1,5 +1,6 @@
 import React from "react";
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { formatIndianTime } from "./main";
 
 function SensorGraph({ title, data, dataKey, color, unit }) {
   return (
@@ -9,7 +10,7 @@ function SensorGraph({ title, data, dataKey, color, unit }) {
         <LineChart data={data}>
           <XAxis dataKey="created_at" hide />
           <YAxis unit={unit} />
-          <Tooltip />
+          <Tooltip labelFormatter={(label) => formatIndianTime(label)} />
           <Line type="monotone" dataKey={dataKey} stroke={color} strokeWidth={3} dot />
         </LineChart>
       </ResponsiveContainer>
