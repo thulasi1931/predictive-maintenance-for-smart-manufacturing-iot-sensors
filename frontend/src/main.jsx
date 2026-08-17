@@ -132,8 +132,8 @@ function App({ onLogout, theme, toggleTheme }) {
     <section className="page-title">
       <div>
         <p>NOTIFICATION CONTROL</p>
-        <h1>Email & SMTP Configuration</h1>
-        <span>Sender credentials & recipient settings are stored permanently in the database.</span>
+        <h1>Email & Notification Settings</h1>
+        <span>Specify which email receives alerts and configure SMTP delivery.</span>
       </div>
     </section>
     <form className="card" onSubmit={saveSettings}>
@@ -142,22 +142,22 @@ function App({ onLogout, theme, toggleTheme }) {
         <b>Enable automatic high-risk email alerts (Risk ≥ 60%)</b>
       </label>
       <label>
-        Alert recipient email
-        <input type="email" value={settings.email_recipient || ""} onChange={(e) => setSettings((old) => ({ ...old, email_recipient: e.target.value }))} placeholder="maintenance-lead@factory.com" required />
+        Alert recipient email (User configurable)
+        <input type="email" value={settings.email_recipient || ""} onChange={(e) => setSettings((old) => ({ ...old, email_recipient: e.target.value }))} placeholder="your-email@example.com" required />
       </label>
       <label>
-        Sender Gmail address (Permanent)
+        Sender Gmail address (Optional custom sender)
         <input type="email" value={settings.smtp_username || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_username: e.target.value }))} placeholder="yourname@gmail.com" />
       </label>
       <label>
         Sender 16-char Gmail App Password
-        <input type="password" value={settings.smtp_password || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_password: e.target.value }))} placeholder={settings.smtp_password_set ? "•••••••••••••••• (Saved Permanently)" : "Enter 16-character App Password"} />
+        <input type="password" value={settings.smtp_password || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_password: e.target.value }))} placeholder={settings.smtp_password_set ? "•••••••••••••••• (Configured)" : "Enter 16-character App Password"} />
       </label>
       <p style={{ fontSize: "0.82rem", color: "#667085", margin: "2px 0 8px", lineHeight: "1.45" }}>
         💡 <b>Gmail Setup Guide:</b> Go to Google Account → Security → Turn on 2-Step Verification → Create an <b>App Password</b> (16 letters). Paste it here or into Render environment variables.
       </p>
       <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
-        <button type="submit">Save settings permanently</button>
+        <button type="submit">Save settings</button>
         <button type="button" onClick={sendTestEmail} style={{ background: '#475467' }}>Send test email</button>
       </div>
     </form>

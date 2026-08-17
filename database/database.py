@@ -111,22 +111,20 @@ def initialise_database() -> None:
             if col not in existing_cols:
                 connection.execute(f"ALTER TABLE notification_settings ADD COLUMN {col} {col_type}")
 
-        # Seed/update notification settings from environment variables into DB
+        # Seed sender SMTP credentials from environment variables if set and empty in DB
         env_user = (os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or "").strip()
         env_pwd = (os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or "").strip()
-        env_recipient = (os.getenv("ALERT_EMAIL") or os.getenv("EMAIL_RECIPIENT") or "").strip()
-        if env_user or env_pwd or env_recipient:
-            row = connection.execute("SELECT smtp_username, smtp_password, email_recipient FROM notification_settings WHERE id = 1").fetchone()
+        if env_user or env_pwd:
+            row = connection.execute("SELECT smtp_username, smtp_password FROM notification_settings WHERE id = 1").fetchone()
             db_user = (row[0] if row else "") or ""
             db_pwd = (row[1] if row else "") or ""
-            db_recipient = (row[2] if row else "") or ""
-            new_user = env_user or db_user
-            new_pwd = env_pwd or db_pwd
-            new_recipient = env_recipient or db_recipient
-            connection.execute(
-                "UPDATE notification_settings SET smtp_username = ?, smtp_password = ?, email_recipient = ? WHERE id = 1",
-                (new_user, new_pwd, new_recipient),
-            )
+            new_user = db_user or env_user
+            new_pwd = db_pwd or env_pwd
+            if new_user != db_user or new_pwd != db_pwd:
+                connection.execute(
+                    "UPDATE notification_settings SET smtp_username = ?, smtp_password = ? WHERE id = 1",
+                    (new_user, new_pwd),
+                )
         connection.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

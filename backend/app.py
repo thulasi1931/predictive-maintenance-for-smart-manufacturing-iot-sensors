@@ -121,13 +121,16 @@ def get_effective_email_settings() -> dict:
     settings = get_notification_settings()
     server_username = (os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or settings.get("smtp_username", "")).strip()
     server_password = (os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or settings.get("smtp_password", "")).strip()
-    recipient = (os.getenv("ALERT_EMAIL") or os.getenv("EMAIL_RECIPIENT") or settings.get("email_recipient", "")).strip()
+    # Recipient email is strictly user-controlled: use DB setting saved by user, otherwise fall back to optional env default
+    user_recipient = (settings.get("email_recipient") or "").strip()
+    env_recipient = (os.getenv("ALERT_EMAIL") or os.getenv("EMAIL_RECIPIENT") or "").strip()
+    recipient = user_recipient if user_recipient else env_recipient
+
     if server_username:
         settings["smtp_username"] = server_username
     if server_password:
         settings["smtp_password"] = server_password
-    if recipient:
-        settings["email_recipient"] = recipient
+    settings["email_recipient"] = recipient
     settings["smtp_configured"] = bool(settings.get("smtp_username") and settings.get("smtp_password"))
     return settings
 
@@ -415,7 +418,7 @@ def update_notification_settings():
         smtp_password = smtp_password.replace(" ", "")
 
     save_notification_settings(enabled, recipient, smtp_host, smtp_port, smtp_username, smtp_password)
-    return jsonify({"message": "Sender & notification settings saved permanently."})
+    return jsonify({"message": f"Alert settings saved. Notifications will be sent to {recipient or 'configured recipient'}."})
 
 
 @app.post("/email-test")
