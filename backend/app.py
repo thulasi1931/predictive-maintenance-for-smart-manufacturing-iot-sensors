@@ -109,6 +109,19 @@ def get_failure_type_models():
         _failure_type_models = loaded
     return _failure_type_models
 
+
+def get_effective_email_settings() -> dict:
+    """Use durable server secrets when configured, otherwise local demo settings."""
+    settings = get_notification_settings()
+    server_username = os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER")
+    server_password = os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD")
+    if server_username:
+        settings["smtp_username"] = server_username
+    if server_password:
+        settings["smtp_password"] = server_password
+    settings["sender_managed_by_server"] = bool(server_username and server_password)
+    return settings
+
 initialise_database()
 
 # Pre-warm ML models in background thread so predictions respond instantly
@@ -329,7 +342,7 @@ def reset_password():
 @app.get("/notification-settings")
 def read_notification_settings():
     """Return the selected email opt-in and SMTP configuration."""
-    settings = get_notification_settings()
+    settings = get_effective_email_settings()
     # Mask password for security when sending to frontend
     safe_settings = dict(settings)
     if safe_settings.get("smtp_password"):
@@ -344,9 +357,9 @@ def read_notification_settings():
 @app.get("/email-status")
 def email_status():
     """Show whether the running Flask process received SMTP or Resend settings."""
-    settings = get_notification_settings()
-    username = os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or settings.get("smtp_username", "")
-    password = os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or settings.get("smtp_password", "")
+    settings = get_effective_email_settings()
+    username = settings.get("smtp_username", "")
+    password = settings.get("smtp_password", "")
     smtp_configured = bool(username and password)
     resend_configured = all(os.getenv(key) for key in ("RESEND_API_KEY", "EMAIL_FROM"))
     return jsonify({"smtp_configured": smtp_configured, "resend_configured": resend_configured, "sender_email": username})
@@ -370,6 +383,11 @@ def update_notification_settings():
     if smtp_password.startswith("•"):
         smtp_password = ""
 
+    # A shared production sender belongs in Render environment secrets. Never
+    # overwrite those durable server credentials from a browser form.
+    if get_effective_email_settings().get("sender_managed_by_server"):
+        existing = get_notification_settings()
+        smtp_username, smtp_password = existing.get("smtp_username", ""), existing.get("smtp_password", "")
     save_notification_settings(enabled, recipient, smtp_host, smtp_port, smtp_username, smtp_password)
     return jsonify({"message": "Email & notification settings saved successfully."})
 

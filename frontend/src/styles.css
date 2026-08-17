@@ -11,6 +11,7 @@
 .forecast-normal h3, .forecast-risk h3 { margin: 0; }
 .forecast-values { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; font-size: .85rem; }
 .forecast-help { margin: 16px 0 0; color: #667085; font-size: .9rem; line-height: 1.5; }
+.forecast-message, .server-sender-note { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; background: #eff8ff; color: #175cd3; font-size: .9rem; line-height: 1.45; }
 @media (max-width: 850px) { .card-heading { display: block; } .card-heading button { margin-top: 15px; } }
 
 /* ── Dark mode ──────────────────────────────────── */
@@ -34,6 +35,7 @@
 .app[data-theme="dark"] .forecast-help, .app[data-theme="dark"] .forecast-card p, .app[data-theme="dark"] .forecast-card small, .app[data-theme="dark"] .card-heading span { color: #c9d1d9; }
 .app[data-theme="dark"] .forecast-normal { background: #123524; }
 .app[data-theme="dark"] .forecast-risk { background: #3b1d22; }
+.app[data-theme="dark"] .forecast-message, .app[data-theme="dark"] .server-sender-note { background: #102a43; color: #b9dcff; }
 /* ─────────────────────────────────────────────── */
 
 /* ── Risk Gauge, Streak & History Styling ──────── */

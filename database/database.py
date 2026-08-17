@@ -1,16 +1,24 @@
 """Small SQLite helper for storing dashboard prediction history."""
 
 import sqlite3
+import os
 from datetime import datetime, timedelta, timezone
 from werkzeug.security import generate_password_hash
 from pathlib import Path
 
 
-DATABASE_PATH = Path(__file__).resolve().with_name("maintenance.db")
+# Render's default filesystem is temporary. Set MAINTAI_DATABASE_PATH to a
+# mounted persistent-disk location (for example /var/data/maintenance.db) in
+# production so accounts, settings, alerts, and work orders survive redeploys.
+DATABASE_PATH = Path(
+    os.getenv("MAINTAI_DATABASE_PATH")
+    or (Path(os.environ["RENDER_DISK_PATH"]) / "maintenance.db" if os.getenv("RENDER_DISK_PATH") else Path(__file__).resolve().with_name("maintenance.db"))
+)
 
 
 def get_connection() -> sqlite3.Connection:
     """Open a SQLite connection with readable dictionary-like rows."""
+    DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     connection = sqlite3.connect(DATABASE_PATH)
     connection.row_factory = sqlite3.Row
     return connection

@@ -29,6 +29,20 @@ Open three PowerShell terminals in the project root.
 python backend/app.py
 ```
 
+## Keep accounts and sender settings after Render deploys
+
+Render's normal service filesystem is temporary, so SQLite data can disappear after a restart or redeploy. For a durable deployed app, attach a **Render Persistent Disk** and set these Render environment variables:
+
+```text
+MAINTAI_DATABASE_PATH=/var/data/maintenance.db
+SMTP_USERNAME=your-shared-sender@example.com
+SMTP_PASSWORD=your-email-provider-app-password
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+```
+
+Mount the disk at `/var/data`. `MAINTAI_DATABASE_PATH` keeps user accounts, notification settings, alerts, and work orders on that disk. The SMTP values are shared server secrets: they are used for every user but never exposed by the browser or stored as a permanent plain-text database setting.
+
 2. Start the dashboard:
 
 ```powershell
