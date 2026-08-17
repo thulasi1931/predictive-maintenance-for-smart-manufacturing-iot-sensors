@@ -376,6 +376,56 @@ def dashboard_summary():
     return jsonify(get_dashboard_summary())
 
 
+def project_next_telemetry(records: list[dict]) -> dict:
+    """Project one next reading using a linear trend in recent telemetry."""
+    ordered = list(reversed(records[:10]))
+    count = len(ordered)
+    x_mean = (count - 1) / 2
+    denominator = sum((index - x_mean) ** 2 for index in range(count))
+
+    def next_value(field: str, minimum: float, maximum: float | None = None) -> float:
+        values = [float(record[field]) for record in ordered]
+        y_mean = sum(values) / count
+        slope = sum((index - x_mean) * (value - y_mean) for index, value in enumerate(values)) / denominator
+        projected = max(y_mean + slope * (count - x_mean), minimum)
+        return round(min(projected, maximum) if maximum is not None else projected, 2)
+
+    latest = ordered[-1]
+    return {
+        "Machine ID": latest["machine_id"], "Type": latest["product_type"],
+        "Air temperature [K]": next_value("air_temperature", 250, 400),
+        "Process temperature [K]": next_value("process_temperature", 250, 450),
+        "Rotational speed [rpm]": next_value("rotational_speed", 0),
+        "Torque [Nm]": next_value("torque", 0), "Tool wear [min]": next_value("tool_wear", 0),
+    }
+
+
+@app.get("/forecast")
+def forecast_next_reading():
+    """Forecast an asset's next reading and estimate its failure risk."""
+    machine_id = request.args.get("machine_id", "").strip().upper()
+    if not machine_id:
+        return jsonify({"error": "machine_id is required."}), 400
+    records = get_recent_predictions(limit=10, machine_id=machine_id)
+    if len(records) < 3:
+        return jsonify({"error": "At least 3 saved readings are required before a trend forecast can be made."}), 422
+
+    projected = project_next_telemetry(records)
+    model = get_model()
+    if not model:
+        return jsonify({"error": "ML model is loading or unavailable."}), 503
+    probability = float(model.predict_proba(add_engineered_features(pd.DataFrame([projected])))[0, 1])
+    return jsonify({
+        "machine_id": machine_id, "readings_used": len(records),
+        "method": "Linear trend projection from recent saved telemetry",
+        "forecast_reading": {"type": projected["Type"], "air_temperature": projected["Air temperature [K]"], "process_temperature": projected["Process temperature [K]"], "rotational_speed": projected["Rotational speed [rpm]"], "torque": projected["Torque [Nm]"], "tool_wear": projected["Tool wear [min]" ]},
+        "forecast_failure_probability": round(probability, 4),
+        "forecast_failure_probability_percent": round(probability * 100, 2),
+        "forecast_prediction": "Failure Risk" if probability >= 0.50 else "Normal",
+        "disclaimer": "Trend forecast only; it supports, not replaces, technician assessment.",
+    })
+
+
 def explain_risk(reading: dict) -> list[str]:
     """Give clear rule-based explanations alongside the ML probability."""
     factors = []

@@ -1,5 +1,17 @@
 :root { font-family: Inter, system-ui, sans-serif; color: #1d2939; background: #f4f7fb; } * { box-sizing: border-box; } body { margin: 0; } .app { min-height: 100vh; display: flex; }
 
+/* Keep account control visible at the top of the sidebar. */
+.sidebar .logout { top: 28px; right: 18px; bottom: auto; width: auto; }
+.card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.card-heading h2 { margin-bottom: 6px; }
+.card-heading span, .forecast-card p { color: #667085; font-size: .86rem; }
+.forecast-normal, .forecast-risk { margin-top: 16px; padding: 14px; border-radius: 9px; }
+.forecast-normal { background: #ecfdf3; border-left: 4px solid #12b76a; }
+.forecast-risk { background: #fef3f2; border-left: 4px solid #f04438; }
+.forecast-normal h3, .forecast-risk h3 { margin: 0; }
+.forecast-values { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; font-size: .85rem; }
+@media (max-width: 850px) { .card-heading { display: block; } .card-heading button { margin-top: 15px; } .sidebar .logout { top: 20px; right: 10px; } }
+
 /* ── Dark mode ──────────────────────────────────── */
 .app[data-theme="dark"] { background: #0d1117; color: #e6edf3; }
 .app[data-theme="dark"] .sidebar { background: #161b22; }

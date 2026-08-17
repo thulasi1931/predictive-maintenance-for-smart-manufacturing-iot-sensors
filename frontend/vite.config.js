@@ -13,6 +13,7 @@ export default defineConfig({
       "/reset-password": "http://127.0.0.1:5000",
       "/predict": "http://127.0.0.1:5000",
       "/history": "http://127.0.0.1:5000",
+      "/forecast": "http://127.0.0.1:5000",
       "/alerts": "http://127.0.0.1:5000",
       "/assets": "http://127.0.0.1:5000",
       "/notification-settings": "http://127.0.0.1:5000",

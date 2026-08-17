@@ -18,6 +18,7 @@ function App({ onLogout, theme, toggleTheme }) {
   const [page, setPage] = useState("dashboard");
   const [reading, setReading] = useState(initialReading);
   const [result, setResult] = useState(null);
+  const [forecast, setForecast] = useState(null);
   const [history, setHistory] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [assets, setAssets] = useState([]);
@@ -32,6 +33,7 @@ function App({ onLogout, theme, toggleTheme }) {
   const timer = useRef(null);
 
   async function loadHistory(assetId = search) { const r = await fetch(`${API}/history?machine_id=${encodeURIComponent(assetId)}`); if (r.ok) setHistory(await r.json()); }
+  async function loadForecast(assetId = search) { setNotice(""); const r = await fetch(`${API}/forecast?machine_id=${encodeURIComponent(assetId)}`); const data = await r.json(); if (!r.ok) { setForecast(null); setNotice(data.error || "Unable to create a trend forecast."); return; } setForecast(data); }
   async function loadAlerts() { const r = await fetch(`${API}/alerts`); if (r.ok) setAlerts(await r.json()); }
   async function loadSettings() { const r = await fetch(`${API}/notification-settings`); if (r.ok) setSettings(await r.json()); }
   async function loadMetrics() { const r = await fetch(`${API}/model-metrics`); if (r.ok) setMetrics(await r.json()); }
@@ -221,6 +223,11 @@ function App({ onLogout, theme, toggleTheme }) {
             </ResponsiveContainer>
           </article>
 
+          <article className="card forecast-card">
+            <div className="card-heading"><div><h2>Next-reading trend forecast</h2><span>Uses the last 3–10 saved readings for this asset, then estimates its next failure risk.</span></div><button onClick={() => loadForecast(search)}>Forecast next reading</button></div>
+            {forecast && <div className={forecast.forecast_failure_probability >= 0.5 ? "forecast-risk" : "forecast-normal"}><h3>{forecast.forecast_prediction} · {forecast.forecast_failure_probability_percent}% estimated risk</h3><p>{forecast.method} ({forecast.readings_used} readings).</p><div className="forecast-values"><span>Air: <b>{forecast.forecast_reading.air_temperature} K</b></span><span>Process: <b>{forecast.forecast_reading.process_temperature} K</b></span><span>Speed: <b>{forecast.forecast_reading.rotational_speed} rpm</b></span><span>Torque: <b>{forecast.forecast_reading.torque} Nm</b></span><span>Tool wear: <b>{forecast.forecast_reading.tool_wear} min</b></span></div><small>{forecast.disclaimer}</small></div>}
+          </article>
+
           {result?.machine_risk_history?.length > 0 && (
             <article className="card machine-risk-history">
               <h3>Machine {result.machine_id} Recent Risk Timeline</h3>
@@ -264,4 +271,3 @@ function Root() {
 }
 
 createRoot(document.getElementById("root")).render(<Root />);
-
