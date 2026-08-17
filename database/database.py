@@ -48,6 +48,19 @@ def initialise_database() -> None:
             )
         """)
         connection.execute("""
+            CREATE TABLE IF NOT EXISTS work_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                machine_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                priority TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Open',
+                assigned_to TEXT DEFAULT '',
+                due_date TEXT DEFAULT '',
+                notes TEXT DEFAULT ''
+            )
+        """)
+        connection.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -158,6 +171,30 @@ def get_recent_alerts(limit: int = 10) -> list[dict]:
             SELECT * FROM alerts WHERE is_resolved = 0 ORDER BY id DESC LIMIT ?
         """, (limit,)).fetchall()
     return [dict(row) for row in rows]
+
+
+def create_work_order(machine_id: str, title: str, priority: str, assigned_to: str = "", due_date: str = "", notes: str = "") -> int:
+    """Create a maintenance task from a detected risk or technician review."""
+    with get_connection() as connection:
+        result = connection.execute("""
+            INSERT INTO work_orders (machine_id, title, priority, assigned_to, due_date, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (machine_id.upper(), title, priority, assigned_to, due_date, notes))
+    return int(result.lastrowid)
+
+
+def get_work_orders(limit: int = 50) -> list[dict]:
+    """Return active and completed maintenance tasks, newest first."""
+    with get_connection() as connection:
+        rows = connection.execute("SELECT * FROM work_orders ORDER BY CASE status WHEN 'Open' THEN 0 WHEN 'In progress' THEN 1 ELSE 2 END, id DESC LIMIT ?", (limit,)).fetchall()
+    return [dict(row) for row in rows]
+
+
+def update_work_order_status(work_order_id: int, status: str) -> bool:
+    """Move a task through the maintenance workflow."""
+    with get_connection() as connection:
+        result = connection.execute("UPDATE work_orders SET status = ? WHERE id = ?", (status, work_order_id))
+    return result.rowcount == 1
 
 
 def save_notification(channel: str, recipient: str, message: str, severity: str, status: str) -> None:

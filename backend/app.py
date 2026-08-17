@@ -56,6 +56,7 @@ from database import (  # noqa: E402
     get_recent_notifications, resolve_alert, save_alert, save_notification,
     save_notification_settings, save_password_reset, save_prediction, update_user_password,
     record_risk_streak,
+    create_work_order, get_work_orders, update_work_order_status,
 )
 
 
@@ -177,6 +178,36 @@ def prediction_history():
 def maintenance_alerts():
     """Return open maintenance alerts for the dashboard alert panel."""
     return jsonify(get_recent_alerts())
+
+
+@app.get("/work-orders")
+def work_orders():
+    """Return maintenance tasks for the work-order board."""
+    return jsonify(get_work_orders())
+
+
+@app.post("/work-orders")
+def add_work_order():
+    """Create a technician-friendly maintenance task."""
+    payload = request.get_json(silent=True) or {}
+    machine_id = str(payload.get("machine_id", "")).strip()
+    title = str(payload.get("title", "")).strip()
+    priority = str(payload.get("priority", "Warning")).strip().title()
+    if not machine_id or not title or priority not in {"Low", "Warning", "High", "Critical"}:
+        return jsonify({"error": "Provide a machine ID, task title, and valid priority."}), 400
+    work_order_id = create_work_order(machine_id, title, priority, str(payload.get("assigned_to", "")).strip(), str(payload.get("due_date", "")).strip(), str(payload.get("notes", "")).strip())
+    return jsonify({"id": work_order_id, "message": "Work order created."}), 201
+
+
+@app.post("/work-orders/<int:work_order_id>/status")
+def change_work_order_status(work_order_id: int):
+    """Update one work order without deleting its audit history."""
+    status = str((request.get_json(silent=True) or {}).get("status", "")).strip()
+    if status not in {"Open", "In progress", "Completed"}:
+        return jsonify({"error": "Status must be Open, In progress, or Completed."}), 400
+    if not update_work_order_status(work_order_id, status):
+        return jsonify({"error": "Work order was not found."}), 404
+    return jsonify({"message": "Work-order status updated."})
 
 
 @app.get("/notifications")

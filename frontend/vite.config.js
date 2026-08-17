@@ -15,6 +15,7 @@ export default defineConfig({
       "/history": "http://127.0.0.1:5000",
       "/forecast": "http://127.0.0.1:5000",
       "/alerts": "http://127.0.0.1:5000",
+      "/work-orders": "http://127.0.0.1:5000",
       "/assets": "http://127.0.0.1:5000",
       "/notification-settings": "http://127.0.0.1:5000",
       "/email-test": "http://127.0.0.1:5000",
