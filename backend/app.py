@@ -38,17 +38,19 @@ from werkzeug.security import check_password_hash
 
 PROJECT_DIRECTORY = Path(__file__).resolve().parents[1]
 
-# Automatically load .env file if present from all candidate directories
-for env_path in [PROJECT_DIRECTORY / ".env", PROJECT_DIRECTORY / "backend" / ".env", Path(__file__).resolve().parent / ".env", Path.cwd() / ".env"]:
-    if env_path.exists():
-        for env_line in env_path.read_text(encoding="utf-8").splitlines():
-            env_line = env_line.strip()
-            if env_line and not env_line.startswith("#") and "=" in env_line:
-                k, v = env_line.split("=", 1)
-                k = k.strip()
-                v = v.strip().strip("'\"")
-                if k not in os.environ:
+def reload_env_and_db_settings():
+    """Reload .env files dynamically so runtime always picks up newest password or email."""
+    for env_path in [PROJECT_DIRECTORY / ".env", PROJECT_DIRECTORY / "backend" / ".env", Path(__file__).resolve().parent / ".env", Path.cwd() / ".env"]:
+        if env_path.exists():
+            for env_line in env_path.read_text(encoding="utf-8").splitlines():
+                env_line = env_line.strip()
+                if env_line and not env_line.startswith("#") and "=" in env_line:
+                    k, v = env_line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
                     os.environ[k] = v
+
+reload_env_and_db_settings()
 
 sys.path.insert(0, str(PROJECT_DIRECTORY / "ml"))
 sys.path.insert(0, str(PROJECT_DIRECTORY / "database"))
@@ -58,7 +60,7 @@ from database import (  # noqa: E402
     get_recent_alerts, get_recent_predictions, get_user_by_email, initialise_database, get_notification_settings,
     get_recent_notifications, resolve_alert, save_alert, save_notification,
     save_notification_settings, save_password_reset, save_prediction, update_user_password,
-    record_risk_streak,
+    record_risk_streak, get_current_ist_time,
     create_work_order, get_work_orders, update_work_order_status,
 )
 
@@ -115,16 +117,17 @@ def get_failure_type_models():
 
 def get_effective_email_settings() -> dict:
     """Return stored notification settings blended with server environment variables."""
+    reload_env_and_db_settings()
     settings = get_notification_settings()
-    server_username = os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or settings.get("smtp_username", "")
-    server_password = os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or settings.get("smtp_password", "")
-    recipient = os.getenv("ALERT_EMAIL") or os.getenv("EMAIL_RECIPIENT") or settings.get("email_recipient", "")
+    server_username = (os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or settings.get("smtp_username", "")).strip()
+    server_password = (os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or settings.get("smtp_password", "")).strip()
+    recipient = (os.getenv("ALERT_EMAIL") or os.getenv("EMAIL_RECIPIENT") or settings.get("email_recipient", "")).strip()
     if server_username:
-        settings["smtp_username"] = server_username.strip()
+        settings["smtp_username"] = server_username
     if server_password:
-        settings["smtp_password"] = server_password.strip()
-    if recipient and not settings.get("email_recipient"):
-        settings["email_recipient"] = recipient.strip()
+        settings["smtp_password"] = server_password
+    if recipient:
+        settings["email_recipient"] = recipient
     settings["smtp_configured"] = bool(settings.get("smtp_username") and settings.get("smtp_password"))
     return settings
 

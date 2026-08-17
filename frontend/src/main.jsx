@@ -10,6 +10,31 @@ const API = typeof window !== "undefined" && window.location.port === "5173" ? "
 const initialReading = { machine_id: "M14860", type: "M", air_temperature: 300.1, process_temperature: 310.6, rotational_speed: 1500, torque: 40, tool_wear: 100 };
 const sensors = [["air_temperature", "Air temperature (K)"], ["process_temperature", "Process temperature (K)"], ["rotational_speed", "Rotational speed (rpm)"], ["torque", "Torque (Nm)"], ["tool_wear", "Tool wear (min)"]];
 
+export function formatIndianTime(timestampStr, includeDate = true) {
+  if (!timestampStr) return "";
+  try {
+    let dateObj;
+    if (typeof timestampStr === "string" && !timestampStr.includes("Z") && !timestampStr.includes("+") && timestampStr.includes(" ")) {
+      dateObj = new Date(timestampStr.replace(" ", "T") + "Z");
+    } else {
+      dateObj = new Date(timestampStr);
+    }
+    if (isNaN(dateObj.getTime())) return timestampStr;
+    return new Intl.DateTimeFormat("en-IN", {
+      timeZone: "Asia/Kolkata",
+      year: includeDate ? "numeric" : undefined,
+      month: includeDate ? "short" : undefined,
+      day: includeDate ? "numeric" : undefined,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    }).format(dateObj);
+  } catch (e) {
+    return timestampStr;
+  }
+}
+
 function Sidebar({ page, setPage, onLogout, theme, toggleTheme }) {
   return <aside className="sidebar"><div className="brand">Maint<span>AI</span><small>Predictive maintenance</small></div><nav>{[["dashboard", "Dashboard"], ["analysis", "Sensor analysis"], ["alerts", "Maintenance alerts"], ["workorders", "Work orders"], ["assets", "Add future machine"], ["metrics", "Model performance"], ["settings", "Email settings"]].map(([key, label]) => <button className={page === key ? "active" : ""} onClick={() => setPage(key)} key={key}>{label}</button>)}<button className="logout" onClick={onLogout}>Sign out</button><button className="theme-toggle" onClick={toggleTheme}>{theme === "dark" ? "☀ Light mode" : "☾ Dark mode"}</button></nav><p className="sidebar-note">AI4I Product IDs are used as asset IDs because this dataset has no machine-ID column.</p></aside>;
 }
@@ -79,7 +104,7 @@ function App({ onLogout, theme, toggleTheme }) {
     loadSettings();
   }
   async function sendTestEmail() {
-    setNotice("Sending test email...");
+    setNotice("Sending test email to recipient...");
     const r = await fetch(`${API}/email-test`, { method: "POST" });
     const data = await r.json();
     setNotice(data.message || data.error);
@@ -90,8 +115,8 @@ function App({ onLogout, theme, toggleTheme }) {
 
   let body;
   if (page === "analysis") body = <Analysis predictions={history} machineId={search} onBack={() => setPage("dashboard")} />;
-  else if (page === "alerts") body = <section><section className="page-title"><div><p>MAINTENANCE WORKFLOW</p><h1>Open maintenance alerts</h1></div></section><div className="alert-list">{alerts.length ? alerts.map((alert) => <article className={`card alert ${alert.severity.toLowerCase()}`} key={alert.id}><b>{alert.severity}</b><h3>{alert.message}</h3><p>{(alert.failure_probability * 100).toFixed(2)}% risk · {alert.created_at} IST</p><button onClick={() => resolveAlert(alert.id)}>Mark resolved</button></article>) : <article className="card">No open alerts.</article>}</div></section>;
-  else if (page === "workorders") body = <section className="settings"><section className="page-title"><div><p>MAINTENANCE WORKFLOW</p><h1>Work orders</h1><span>Assign model findings to technicians and track completion.</span></div></section><form className="card work-order-form" onSubmit={createWorkOrder}><label>Machine ID<input value={workOrder.machine_id} onChange={(e) => setWorkOrder({ ...workOrder, machine_id: e.target.value })} required /></label><label>Task title<input value={workOrder.title} onChange={(e) => setWorkOrder({ ...workOrder, title: e.target.value })} required /></label><label>Priority<select value={workOrder.priority} onChange={(e) => setWorkOrder({ ...workOrder, priority: e.target.value })}><option>Low</option><option>Warning</option><option>High</option><option>Critical</option></select></label><label>Assign to<input value={workOrder.assigned_to} onChange={(e) => setWorkOrder({ ...workOrder, assigned_to: e.target.value })} placeholder="Technician name" /></label><button>Create work order</button></form><div className="alert-list work-order-list">{workOrders.length ? workOrders.map((item) => <article className="card" key={item.id}><b>{item.priority} · {item.status}</b><h3>{item.machine_id}: {item.title}</h3><p>Assigned: {item.assigned_to || "Unassigned"}</p><div className="work-order-actions">{item.status === "Open" && <button onClick={() => setWorkOrderStatus(item.id, "In progress")}>Start work</button>}{item.status !== "Completed" && <button onClick={() => setWorkOrderStatus(item.id, "Completed")}>Mark completed</button>}</div></article>) : <article className="card">No work orders yet.</article>}</div></section>;
+  else if (page === "alerts") body = <section><section className="page-title"><div><p>MAINTENANCE WORKFLOW</p><h1>Open maintenance alerts</h1></div></section><div className="alert-list">{alerts.length ? alerts.map((alert) => <article className={`card alert ${alert.severity.toLowerCase()}`} key={alert.id}><b>{alert.severity}</b><h3>{alert.message}</h3><p>{(alert.failure_probability * 100).toFixed(2)}% risk · {formatIndianTime(alert.created_at)}</p><button onClick={() => resolveAlert(alert.id)}>Mark resolved</button></article>) : <article className="card">No open alerts.</article>}</div></section>;
+  else if (page === "workorders") body = <section className="settings"><section className="page-title"><div><p>MAINTENANCE WORKFLOW</p><h1>Work orders</h1><span>Assign model findings to technicians and track completion.</span></div></section><form className="card work-order-form" onSubmit={createWorkOrder}><label>Machine ID<input value={workOrder.machine_id} onChange={(e) => setWorkOrder({ ...workOrder, machine_id: e.target.value })} required /></label><label>Task title<input value={workOrder.title} onChange={(e) => setWorkOrder({ ...workOrder, title: e.target.value })} required /></label><label>Priority<select value={workOrder.priority} onChange={(e) => setWorkOrder({ ...workOrder, priority: e.target.value })}><option>Low</option><option>Warning</option><option>High</option><option>Critical</option></select></label><label>Assign to<input value={workOrder.assigned_to} onChange={(e) => setWorkOrder({ ...workOrder, assigned_to: e.target.value })} placeholder="Technician name" /></label><button>Create work order</button></form><div className="alert-list work-order-list">{workOrders.length ? workOrders.map((item) => <article className="card" key={item.id}><b>{item.priority} · {item.status}</b><h3>{item.machine_id}: {item.title}</h3><p>Assigned: {item.assigned_to || "Unassigned"} · {formatIndianTime(item.created_at)}</p><div className="work-order-actions">{item.status === "Open" && <button onClick={() => setWorkOrderStatus(item.id, "In progress")}>Start work</button>}{item.status !== "Completed" && <button onClick={() => setWorkOrderStatus(item.id, "Completed")}>Mark completed</button>}</div></article>) : <article className="card">No work orders yet.</article>}</div></section>;
   else if (page === "assets") body = <section className="settings"><section className="page-title"><div><p>FUTURE EXPANSION</p><h1>Add a future machine</h1><span>Register a new machine now; its telemetry can be predicted using the existing model.</span></div></section><form className="card" onSubmit={addFutureMachine}><label>Future asset ID<input value={newAsset.asset_id} onChange={(e) => setNewAsset({ ...newAsset, asset_id: e.target.value })} required /></label><label>Machine name<input value={newAsset.asset_name} onChange={(e) => setNewAsset({ ...newAsset, asset_name: e.target.value })} required /></label><label>Expected product quality type<select value={newAsset.product_type} onChange={(e) => setNewAsset({ ...newAsset, product_type: e.target.value })}><option>L</option><option>M</option><option>H</option></select></label><button>Add machine</button></form></section>;
   else if (page === "metrics") body = <Metrics metrics={metrics} />;
   else if (page === "settings") body = <section className="settings">
@@ -305,7 +330,7 @@ function App({ onLogout, theme, toggleTheme }) {
                     }`}
                   >
                     <b>{item.failure_probability_percent}%</b>
-                    <small>{item.created_at ? `${item.created_at.slice(11, 19)} IST` : `#${idx + 1}`}</small>
+                    <small>{item.created_at ? formatIndianTime(item.created_at, false) : `#${idx + 1}`}</small>
                   </span>
                 ))}
               </div>

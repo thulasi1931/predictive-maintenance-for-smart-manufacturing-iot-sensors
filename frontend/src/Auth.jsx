@@ -119,8 +119,8 @@ export default function Auth({ onAuthenticated }) {
       : mode === "signup"
       ? "Create your account"
       : mode === "forgot"
-      ? "Forgot Password"
-      : "Reset password with OTP";
+      ? "Reset Password"
+      : "Enter Verification Code";
 
   return (
     <main className="auth-page">
@@ -242,8 +242,8 @@ export default function Auth({ onAuthenticated }) {
 
         {mode === "forgot" && (
           <form onSubmit={requestOtp} style={{ display: "grid", gap: "16px", marginTop: "12px" }}>
-            <p style={{ color: "#475467", fontSize: "0.88rem", margin: 0 }}>
-              Enter your registered email address. We will generate and email a 6-digit OTP to reset your password.
+            <p style={{ color: "#475467", fontSize: "0.88rem", margin: 0, lineHeight: "1.4" }}>
+              Enter your registered email address. A 6-digit verification code will be sent directly to your email inbox.
             </p>
             <label>
               Registered Email
@@ -256,7 +256,7 @@ export default function Auth({ onAuthenticated }) {
               />
             </label>
             <button type="submit" disabled={loading}>
-              {loading ? "Generating OTP..." : "Generate & Send OTP"}
+              {loading ? "Sending Email..." : "Email me verification code"}
             </button>
             {message && <b className="notice">{message}</b>}
             <div style={{ display: "flex", justifyContent: "space-between", marginTop: "8px" }}>
@@ -278,7 +278,7 @@ export default function Auth({ onAuthenticated }) {
                   setMessage("");
                 }}
               >
-                Already have OTP?
+                Already have code?
               </button>
             </div>
           </form>
@@ -286,6 +286,9 @@ export default function Auth({ onAuthenticated }) {
 
         {mode === "reset" && (
           <form onSubmit={handleResetPassword} style={{ display: "grid", gap: "16px", marginTop: "12px" }}>
+            <p style={{ color: "#475467", fontSize: "0.88rem", margin: 0, lineHeight: "1.4" }}>
+              Please check your email inbox and enter the 6-digit verification code received.
+            </p>
             <label>
               Email address
               <input
@@ -297,7 +300,7 @@ export default function Auth({ onAuthenticated }) {
               />
             </label>
             <label>
-              6-Digit OTP
+              6-Digit Code (from Email)
               <input
                 value={form.otp}
                 onChange={(e) => update("otp", e.target.value)}
@@ -328,7 +331,7 @@ export default function Auth({ onAuthenticated }) {
               />
             </label>
             <button type="submit" disabled={loading}>
-              {loading ? "Resetting password..." : "Reset password"}
+              {loading ? "Updating password..." : "Update password"}
             </button>
             <button
               type="button"
@@ -336,7 +339,7 @@ export default function Auth({ onAuthenticated }) {
               disabled={loading}
               style={{ background: "#475467" }}
             >
-              Resend OTP
+              Resend Code to Email
             </button>
             {message && <b className="notice">{message}</b>}
             <button
