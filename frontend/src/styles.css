@@ -56,8 +56,8 @@
 .machine-risk-history h3 { margin: 0 0 10px; font-size: .92rem; color: #344054; }
 .app[data-theme="dark"] .machine-risk-history h3 { color: #e6edf3; }
 .risk-history-pills { display: flex; flex-wrap: wrap; gap: 8px; }
-.risk-pill { display: inline-flex; flex-direction: column; align-items: center; padding: 6px 12px; border-radius: 7px; background: #f2f4f7; font-size: .8rem; min-width: 54px; }
-.risk-pill small { font-size: .68rem; color: #667085; }
+.risk-pill { display: inline-flex; flex-direction: column; align-items: center; padding: 6px 12px; border-radius: 7px; background: #f2f4f7; font-size: .8rem; min-width: 60px; }
+.risk-pill small { font-size: .68rem; color: #667085; white-space: nowrap; margin-top: 2px; }
 .risk-pill.pill-healthy { border-left: 3px solid #12b76a; }
 .risk-pill.pill-warning { border-left: 3px solid #f79009; }
 .risk-pill.pill-critical { border-left: 3px solid #f04438; }

@@ -29,7 +29,7 @@ export function formatIndianTime(timestampStr, includeDate = true) {
       ? { year: "numeric", month: "short", day: "numeric" }
       : {};
 
-    return new Intl.DateTimeFormat("en-IN", {
+    const formatted = new Intl.DateTimeFormat("en-IN", {
       timeZone: "Asia/Kolkata",
       ...dateOptions,
       hour: "2-digit",
@@ -37,6 +37,8 @@ export function formatIndianTime(timestampStr, includeDate = true) {
       second: "2-digit",
       hour12: true,
     }).format(dateObj);
+
+    return `${formatted} IST`;
   } catch (e) {
     return String(timestampStr);
   }

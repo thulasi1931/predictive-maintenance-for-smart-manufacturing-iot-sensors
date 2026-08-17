@@ -728,8 +728,15 @@ def serve_frontend(path):
     frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
     full_path = os.path.join(frontend_dir, path)
     if path != "" and os.path.isfile(full_path):
-        return send_from_directory(frontend_dir, path)
-    return send_from_directory(frontend_dir, "index.html")
+        resp = send_from_directory(frontend_dir, path)
+        if path.startswith("assets/"):
+            resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+    resp = send_from_directory(frontend_dir, "index.html")
+    resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
 
 
 if __name__ == "__main__":
