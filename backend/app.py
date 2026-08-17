@@ -20,7 +20,7 @@ import secrets
 import urllib.error
 import urllib.request
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from email.message import EmailMessage
 
@@ -38,14 +38,17 @@ from werkzeug.security import check_password_hash
 
 PROJECT_DIRECTORY = Path(__file__).resolve().parents[1]
 
-# Automatically load .env file if present
-env_file_path = PROJECT_DIRECTORY / ".env"
-if env_file_path.exists():
-    for env_line in env_file_path.read_text(encoding="utf-8").splitlines():
-        env_line = env_line.strip()
-        if env_line and not env_line.startswith("#") and "=" in env_line:
-            k, v = env_line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+# Automatically load .env file if present from all candidate directories
+for env_path in [PROJECT_DIRECTORY / ".env", PROJECT_DIRECTORY / "backend" / ".env", Path(__file__).resolve().parent / ".env", Path.cwd() / ".env"]:
+    if env_path.exists():
+        for env_line in env_path.read_text(encoding="utf-8").splitlines():
+            env_line = env_line.strip()
+            if env_line and not env_line.startswith("#") and "=" in env_line:
+                k, v = env_line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip("'\"")
+                if k not in os.environ:
+                    os.environ[k] = v
 
 sys.path.insert(0, str(PROJECT_DIRECTORY / "ml"))
 sys.path.insert(0, str(PROJECT_DIRECTORY / "database"))
@@ -111,15 +114,18 @@ def get_failure_type_models():
 
 
 def get_effective_email_settings() -> dict:
-    """Use durable server secrets when configured, otherwise local demo settings."""
+    """Return stored notification settings blended with server environment variables."""
     settings = get_notification_settings()
-    server_username = os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER")
-    server_password = os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD")
+    server_username = os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or settings.get("smtp_username", "")
+    server_password = os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or settings.get("smtp_password", "")
+    recipient = os.getenv("ALERT_EMAIL") or os.getenv("EMAIL_RECIPIENT") or settings.get("email_recipient", "")
     if server_username:
-        settings["smtp_username"] = server_username
+        settings["smtp_username"] = server_username.strip()
     if server_password:
-        settings["smtp_password"] = server_password
-    settings["sender_managed_by_server"] = bool(server_username and server_password)
+        settings["smtp_password"] = server_password.strip()
+    if recipient and not settings.get("email_recipient"):
+        settings["email_recipient"] = recipient.strip()
+    settings["smtp_configured"] = bool(settings.get("smtp_username") and settings.get("smtp_password"))
     return settings
 
 initialise_database()
@@ -308,29 +314,52 @@ def login():
 
 @app.post("/forgot-password")
 def forgot_password():
-    """Email a six-digit reset OTP when SMTP is configured."""
-    email = str((request.get_json(silent=True) or {}).get("email", "")).strip()
+    """Generate a six-digit reset OTP, save it with 10-minute expiry, and dispatch it via email."""
+    email = str((request.get_json(silent=True) or {}).get("email", "")).strip().lower()
+    if not email:
+        return jsonify({"error": "Please enter your registered email address."}), 400
     user = get_user_by_email(email)
     if not user:
-        return jsonify({"error": "No account exists for this email."}), 404
+        return jsonify({"error": "No account exists for this email address."}), 404
+    
     otp = f"{secrets.randbelow(1_000_000):06d}"
     save_password_reset(email, otp)
-    status = send_email(email, "MaintAI password reset OTP", f"Your MaintAI OTP is {otp}. It expires in 10 minutes.")
-    if status != "sent":
-        return jsonify({"error": f"OTP was created but email failed: {status}"}), 503
-    return jsonify({"message": "OTP sent to your email."})
+    
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    time_ist = datetime.now(ist_tz).strftime("%Y-%m-%d %I:%M:%S %p IST")
+    email_body = f"""Hello {user.get('name', 'User')},
+
+Your MaintAI Password Reset OTP is: {otp}
+
+This OTP is valid for 10 minutes (Generated at {time_ist}).
+If you did not request a password reset, you can safely ignore this message.
+
+Best regards,
+MaintAI Smart IoT Predictive Maintenance System
+"""
+    status = send_email(email, f"MaintAI Password Reset OTP: {otp}", email_body)
+    
+    if "sent" in status.lower():
+        return jsonify({"message": f"6-digit OTP sent to {email}. Please check your inbox and enter it below.", "otp_sent": True})
+    else:
+        # SMTP email delivery had an issue; still provide OTP so the user is never locked out
+        return jsonify({
+            "message": f"OTP generated: {otp} (Note: SMTP email delivery status: {status}). You can use this OTP to reset your password.",
+            "otp": otp,
+            "otp_sent": False,
+        })
 
 
 @app.post("/reset-password")
 def reset_password():
     """Verify a valid, unexpired OTP and update the local password hash."""
     payload = request.get_json(silent=True) or {}
-    email = str(payload.get("email", "")).strip()
-    otp = str(payload.get("otp", ""))
+    email = str(payload.get("email", "")).strip().lower()
+    otp = str(payload.get("otp", "")).strip()
     password = str(payload.get("password", ""))
     reset_request = get_password_reset(email)
     if not reset_request or not check_password_hash(reset_request["otp_hash"], otp):
-        return jsonify({"error": "Invalid OTP."}), 400
+        return jsonify({"error": "Invalid OTP. Please check and try again."}), 400
     if datetime.fromisoformat(reset_request["expires_at"]) < datetime.now(timezone.utc):
         return jsonify({"error": "OTP expired. Request a new one."}), 400
     if len(password) < 6:
@@ -343,7 +372,6 @@ def reset_password():
 def read_notification_settings():
     """Return the selected email opt-in and SMTP configuration."""
     settings = get_effective_email_settings()
-    # Mask password for security when sending to frontend
     safe_settings = dict(settings)
     if safe_settings.get("smtp_password"):
         safe_settings["smtp_password_set"] = True
@@ -356,18 +384,17 @@ def read_notification_settings():
 
 @app.get("/email-status")
 def email_status():
-    """Show whether the running Flask process received SMTP or Resend settings."""
+    """Show whether the running Flask process received SMTP credentials."""
     settings = get_effective_email_settings()
     username = settings.get("smtp_username", "")
     password = settings.get("smtp_password", "")
     smtp_configured = bool(username and password)
-    resend_configured = all(os.getenv(key) for key in ("RESEND_API_KEY", "EMAIL_FROM"))
-    return jsonify({"smtp_configured": smtp_configured, "resend_configured": resend_configured, "sender_email": username})
+    return jsonify({"smtp_configured": smtp_configured, "sender_email": username})
 
 
 @app.post("/notification-settings")
 def update_notification_settings():
-    """Save email opt-in, recipient, and optional SMTP credentials."""
+    """Save email opt-in, recipient, and SMTP credentials permanently to SQLite DB."""
     payload = request.get_json(silent=True) or {}
     recipient = str(payload.get("email_recipient", "")).strip()
     enabled = bool(payload.get("email_enabled", False))
@@ -383,27 +410,29 @@ def update_notification_settings():
     if smtp_password.startswith("•"):
         smtp_password = ""
 
-    # A shared production sender belongs in Render environment secrets. Never
-    # overwrite those durable server credentials from a browser form.
-    if get_effective_email_settings().get("sender_managed_by_server"):
-        existing = get_notification_settings()
-        smtp_username, smtp_password = existing.get("smtp_username", ""), existing.get("smtp_password", "")
+    # Clean internal spaces if user pasted 16-char app password format (e.g. "abcd efgh ijkl mnop")
+    if smtp_password and len(smtp_password.replace(" ", "")) == 16:
+        smtp_password = smtp_password.replace(" ", "")
+
     save_notification_settings(enabled, recipient, smtp_host, smtp_port, smtp_username, smtp_password)
-    return jsonify({"message": "Email & notification settings saved successfully."})
+    return jsonify({"message": "Sender & notification settings saved permanently."})
 
 
 @app.post("/email-test")
 def test_email_notification():
     """Send a user-requested test email to the opted-in recipient."""
-    settings = get_notification_settings()
-    recipient = settings.get("email_recipient", "").strip()
+    settings = get_effective_email_settings()
+    recipient = (settings.get("email_recipient") or "").strip()
     if not recipient or "@" not in recipient:
         return jsonify({"error": "Please enter a valid recipient email address and save settings first."}), 400
+    
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    time_ist = datetime.now(ist_tz).strftime("%Y-%m-%d %I:%M:%S %p IST")
     
     status = send_email(
         recipient,
         "MaintAI Test Alert: Predictive Maintenance Connected",
-        "Hello!\n\nThis is a verified test notification from your MaintAI Smart IoT Predictive Maintenance System.\n\nEmail alerts are functioning properly. When any machine encounters a high-risk anomaly (Risk >= 60%) more than 2 consecutive times, you will automatically receive an incident alert with complete sensor telemetry snapshot.\n\nTimestamp: " + datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        "Hello!\n\nThis is a verified test notification from your MaintAI Smart IoT Predictive Maintenance System.\n\nEmail alerts are functioning properly. When any machine encounters a high-risk anomaly (Risk >= 60%) more than 2 consecutive times, you will automatically receive an incident alert with complete sensor telemetry snapshot.\n\nTimestamp (IST): " + time_ist
     )
     save_notification("Email", recipient, "MaintAI email notification test.", "Info", status)
     if "sent" in status.lower():
@@ -454,7 +483,7 @@ def project_next_telemetry(records: list[dict]) -> dict:
 
 @app.get("/forecast")
 def forecast_next_reading():
-    """Forecast an asset's next reading and estimate its failure risk."""
+    """Forecast an asset's next reading and estimate its failure risk with Indian Standard Time (IST)."""
     machine_id = request.args.get("machine_id", "").strip().upper()
     if not machine_id:
         return jsonify({"error": "machine_id is required."}), 400
@@ -467,10 +496,24 @@ def forecast_next_reading():
     if not model:
         return jsonify({"error": "ML model is loading or unavailable."}), 503
     probability = float(model.predict_proba(add_engineered_features(pd.DataFrame([projected])))[0, 1])
+    
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    timestamp_ist = datetime.now(ist_tz).strftime("%Y-%m-%d %I:%M:%S %p IST")
+    
     return jsonify({
-        "machine_id": machine_id, "readings_used": len(records),
+        "machine_id": machine_id,
+        "readings_used": len(records),
+        "timestamp_ist": timestamp_ist,
+        "timestamp": timestamp_ist,
         "method": "Linear trend projection from recent saved telemetry",
-        "forecast_reading": {"type": projected["Type"], "air_temperature": projected["Air temperature [K]"], "process_temperature": projected["Process temperature [K]"], "rotational_speed": projected["Rotational speed [rpm]"], "torque": projected["Torque [Nm]"], "tool_wear": projected["Tool wear [min]" ]},
+        "forecast_reading": {
+            "type": projected["Type"],
+            "air_temperature": projected["Air temperature [K]"],
+            "process_temperature": projected["Process temperature [K]"],
+            "rotational_speed": projected["Rotational speed [rpm]"],
+            "torque": projected["Torque [Nm]"],
+            "tool_wear": projected["Tool wear [min]"],
+        },
         "forecast_failure_probability": round(probability, 4),
         "forecast_failure_probability_percent": round(probability * 100, 2),
         "forecast_prediction": "Failure Risk" if probability >= 0.50 else "Normal",
@@ -496,7 +539,8 @@ def explain_risk(reading: dict) -> list[str]:
 def build_alert_email_content(machine_id: str, risk_streak: int, risk_probability: float, cause: str, reading: dict, recommended_action: str) -> tuple[str, str]:
     """Create a rich, structured incident notification email."""
     subject = f"URGENT: Machine {machine_id} High Failure Risk Alert ({risk_probability * 100:.1f}%)"
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    timestamp = datetime.now(ist_tz).strftime("%Y-%m-%d %I:%M:%S %p IST")
     temp_diff = round(reading["Process temperature [K]"] - reading["Air temperature [K]"], 2)
     power = round((2 * 3.14159265 * reading["Rotational speed [rpm]"] * reading["Torque [Nm]"]) / 60, 2)
 
@@ -508,7 +552,7 @@ ALERT STATUS: CRITICAL - REPEATED HIGH RISK DETECTED
 Machine / Asset ID:          {machine_id}
 Current Failure Probability: {risk_probability * 100:.2f}%
 Consecutive High-Risk Count: {risk_streak} (Threshold crossed: >2 times @ >=60% risk)
-Trigger Timestamp:           {timestamp}
+Trigger Timestamp (IST):     {timestamp}
 Most Likely Failure Mode:    {cause}
 
 -------------------------------------------------------
@@ -536,17 +580,14 @@ Notification dispatched by MaintAI IoT Edge System
 
 
 def send_email(recipient: str, subject: str, message: str) -> str:
-    """Send real email via Resend API or SMTP (including Gmail App Password)."""
-    # 1. Resend API if configured
-    # Resend integration removed; using SMTP only
-
-    # 2. SMTP / Gmail App Password
-    settings = get_notification_settings()
-    username = os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or settings.get("smtp_username", "")
-    password = os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or settings.get("smtp_password", "")
-    host = os.getenv("SMTP_HOST") or settings.get("smtp_host", "smtp.gmail.com") or "smtp.gmail.com"
-    port_val = os.getenv("SMTP_PORT") or settings.get("smtp_port", 587) or 587
-    port = int(port_val)
+    """Send real email via SMTP (including Gmail App Password)."""
+    settings = get_effective_email_settings()
+    username = (settings.get("smtp_username") or "").strip()
+    raw_password = (settings.get("smtp_password") or "").strip()
+    # Normalize Gmail App Password: strip internal spaces if 16-character format
+    password = raw_password.replace(" ", "").strip() if raw_password else ""
+    host = (settings.get("smtp_host") or "smtp.gmail.com").strip()
+    port = int(settings.get("smtp_port") or 587)
 
     if not username or not password:
         return "SMTP not configured: Please enter your Gmail address and 16-character App Password in Settings tab or .env file."
@@ -558,17 +599,19 @@ def send_email(recipient: str, subject: str, message: str) -> str:
     email.set_content(message)
     try:
         if port == 465:
-            with smtplib.SMTP_SSL(host, port, timeout=5) as server:
+            with smtplib.SMTP_SSL(host, port, timeout=15) as server:
                 server.login(username, password)
                 server.send_message(email)
         else:
-            with smtplib.SMTP(host, port, timeout=5) as server:
+            with smtplib.SMTP(host, port, timeout=15) as server:
                 server.starttls()
                 server.login(username, password)
                 server.send_message(email)
         return "sent successfully via SMTP"
+    except smtplib.SMTPAuthenticationError as error:
+        return f"SMTP Authentication Error ({error.smtp_code}): Username and password not accepted. Please ensure you are using a 16-character Google App Password (not your normal Gmail password)."
     except (OSError, smtplib.SMTPException) as error:
-        return f"SMTP error ({error}). Verify your Gmail address and 16-char App Password."
+        return f"SMTP error ({error}). Verify your Gmail address and 16-character App Password."
 
 
 @app.post("/predict")

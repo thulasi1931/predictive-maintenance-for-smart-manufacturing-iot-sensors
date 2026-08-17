@@ -94,7 +94,40 @@ function App({ onLogout, theme, toggleTheme }) {
   else if (page === "workorders") body = <section className="settings"><section className="page-title"><div><p>MAINTENANCE WORKFLOW</p><h1>Work orders</h1><span>Assign model findings to technicians and track completion.</span></div></section><form className="card work-order-form" onSubmit={createWorkOrder}><label>Machine ID<input value={workOrder.machine_id} onChange={(e) => setWorkOrder({ ...workOrder, machine_id: e.target.value })} required /></label><label>Task title<input value={workOrder.title} onChange={(e) => setWorkOrder({ ...workOrder, title: e.target.value })} required /></label><label>Priority<select value={workOrder.priority} onChange={(e) => setWorkOrder({ ...workOrder, priority: e.target.value })}><option>Low</option><option>Warning</option><option>High</option><option>Critical</option></select></label><label>Assign to<input value={workOrder.assigned_to} onChange={(e) => setWorkOrder({ ...workOrder, assigned_to: e.target.value })} placeholder="Technician name" /></label><button>Create work order</button></form><div className="alert-list work-order-list">{workOrders.length ? workOrders.map((item) => <article className="card" key={item.id}><b>{item.priority} · {item.status}</b><h3>{item.machine_id}: {item.title}</h3><p>Assigned: {item.assigned_to || "Unassigned"}</p><div className="work-order-actions">{item.status === "Open" && <button onClick={() => setWorkOrderStatus(item.id, "In progress")}>Start work</button>}{item.status !== "Completed" && <button onClick={() => setWorkOrderStatus(item.id, "Completed")}>Mark completed</button>}</div></article>) : <article className="card">No work orders yet.</article>}</div></section>;
   else if (page === "assets") body = <section className="settings"><section className="page-title"><div><p>FUTURE EXPANSION</p><h1>Add a future machine</h1><span>Register a new machine now; its telemetry can be predicted using the existing model.</span></div></section><form className="card" onSubmit={addFutureMachine}><label>Future asset ID<input value={newAsset.asset_id} onChange={(e) => setNewAsset({ ...newAsset, asset_id: e.target.value })} required /></label><label>Machine name<input value={newAsset.asset_name} onChange={(e) => setNewAsset({ ...newAsset, asset_name: e.target.value })} required /></label><label>Expected product quality type<select value={newAsset.product_type} onChange={(e) => setNewAsset({ ...newAsset, product_type: e.target.value })}><option>L</option><option>M</option><option>H</option></select></label><button>Add machine</button></form></section>;
   else if (page === "metrics") body = <Metrics metrics={metrics} />;
-  else if (page === "settings") body = <section className="settings"><section className="page-title"><div><p>NOTIFICATION CONTROL</p><h1>Email alert configuration</h1><span>Trigger alerts when machine risk reaches 60%+ more than 2 times.</span></div></section><form className="card" onSubmit={saveSettings}>{settings.sender_managed_by_server && <p className="server-sender-note">Shared sender is securely configured on the server for all users. Only the alert recipient is editable here.</p>}<label className="checkbox"><input type="checkbox" checked={Boolean(settings.email_enabled)} onChange={(e) => setSettings((old) => ({ ...old, email_enabled: e.target.checked }))} /> Enable automatic high-risk email alerts</label><label>Alert recipient email<input type="email" value={settings.email_recipient || ""} onChange={(e) => setSettings((old) => ({ ...old, email_recipient: e.target.value }))} placeholder="maintenance-lead@factory.com" required /></label><label>Sender email address<input type="email" value={settings.smtp_username || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_username: e.target.value }))} placeholder="yourname@gmail.com" disabled={Boolean(settings.sender_managed_by_server)} /></label><label>Sender app password<input type="password" value={settings.smtp_password || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_password: e.target.value }))} placeholder={settings.smtp_password_set ? "•••••••••••••••• (Saved)" : "Enter 16-character App Password"} disabled={Boolean(settings.sender_managed_by_server)} /></label><div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}><button type="submit">Save settings</button><button type="button" onClick={sendTestEmail} style={{ background: '#475467' }}>Send test email</button></div></form></section>;
+  else if (page === "settings") body = <section className="settings">
+    <section className="page-title">
+      <div>
+        <p>NOTIFICATION CONTROL</p>
+        <h1>Email & SMTP Configuration</h1>
+        <span>Sender credentials & recipient settings are stored permanently in the database.</span>
+      </div>
+    </section>
+    <form className="card" onSubmit={saveSettings}>
+      <label className="checkbox">
+        <input type="checkbox" checked={Boolean(settings.email_enabled)} onChange={(e) => setSettings((old) => ({ ...old, email_enabled: e.target.checked }))} />
+        <b>Enable automatic high-risk email alerts (Risk ≥ 60%)</b>
+      </label>
+      <label>
+        Alert recipient email
+        <input type="email" value={settings.email_recipient || ""} onChange={(e) => setSettings((old) => ({ ...old, email_recipient: e.target.value }))} placeholder="maintenance-lead@factory.com" required />
+      </label>
+      <label>
+        Sender Gmail address (Permanent)
+        <input type="email" value={settings.smtp_username || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_username: e.target.value }))} placeholder="yourname@gmail.com" />
+      </label>
+      <label>
+        Sender 16-char Gmail App Password
+        <input type="password" value={settings.smtp_password || ""} onChange={(e) => setSettings((old) => ({ ...old, smtp_password: e.target.value }))} placeholder={settings.smtp_password_set ? "•••••••••••••••• (Saved Permanently)" : "Enter 16-character App Password"} />
+      </label>
+      <p style={{ fontSize: "0.82rem", color: "#667085", margin: "2px 0 8px", lineHeight: "1.45" }}>
+        💡 <b>Gmail Setup Guide:</b> Go to Google Account → Security → Turn on 2-Step Verification → Create an <b>App Password</b> (16 letters). Paste it here or into Render environment variables.
+      </p>
+      <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+        <button type="submit">Save settings permanently</button>
+        <button type="button" onClick={sendTestEmail} style={{ background: '#475467' }}>Send test email</button>
+      </div>
+    </form>
+  </section>;
   else body = (
     <>
       <section className="page-title">
@@ -232,7 +265,27 @@ function App({ onLogout, theme, toggleTheme }) {
 
           <article className="card forecast-card">
             <div className="card-heading"><div><h2>Next-reading trend forecast</h2><span>Uses the last 3–10 saved readings for this asset, then estimates its next failure risk.</span></div><button onClick={() => loadForecast(search)}>Forecast next reading</button></div>
-            {forecast ? <div className={forecast.forecast_failure_probability >= 0.5 ? "forecast-risk" : "forecast-normal"}><h3>{forecast.forecast_prediction} · {forecast.forecast_failure_probability_percent}% estimated risk</h3><p>Based on the trend in your latest {forecast.readings_used} readings. The predicted values below are for the next reading.</p><div className="forecast-values"><span>Air: <b>{forecast.forecast_reading.air_temperature} K</b></span><span>Process: <b>{forecast.forecast_reading.process_temperature} K</b></span><span>Speed: <b>{forecast.forecast_reading.rotational_speed} rpm</b></span><span>Torque: <b>{forecast.forecast_reading.torque} Nm</b></span><span>Tool wear: <b>{forecast.forecast_reading.tool_wear} min</b></span></div><small>{forecast.disclaimer}</small></div> : <p className="forecast-help"><b>How to use this:</b> click “Run ML prediction” three times for the same machine, or start live simulation. Then click “Forecast next reading” to see the likely next sensor values and risk.</p>}
+            {forecast ? (
+              <div className={forecast.forecast_failure_probability >= 0.5 ? "forecast-risk" : "forecast-normal"}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px" }}>
+                  <h3>{forecast.forecast_prediction} · {forecast.forecast_failure_probability_percent}% estimated risk</h3>
+                  {forecast.timestamp_ist && (
+                    <span className="forecast-time-ist">🕒 Indian Time (IST): <b>{forecast.timestamp_ist}</b></span>
+                  )}
+                </div>
+                <p>Based on the trend in your latest {forecast.readings_used} readings. The predicted values below are for the next reading.</p>
+                <div className="forecast-values">
+                  <span>Air: <b>{forecast.forecast_reading.air_temperature} K</b></span>
+                  <span>Process: <b>{forecast.forecast_reading.process_temperature} K</b></span>
+                  <span>Speed: <b>{forecast.forecast_reading.rotational_speed} rpm</b></span>
+                  <span>Torque: <b>{forecast.forecast_reading.torque} Nm</b></span>
+                  <span>Tool wear: <b>{forecast.forecast_reading.tool_wear} min</b></span>
+                </div>
+                <small>{forecast.disclaimer}</small>
+              </div>
+            ) : (
+              <p className="forecast-help"><b>How to use this:</b> click “Run ML prediction” three times for the same machine, or start live simulation. Then click “Forecast next reading” to see the likely next sensor values and risk.</p>
+            )}
             {forecastMessage && <p className="forecast-message">{forecastMessage}</p>}
           </article>
 

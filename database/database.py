@@ -7,13 +7,19 @@ from werkzeug.security import generate_password_hash
 from pathlib import Path
 
 
-# Render's default filesystem is temporary. Set MAINTAI_DATABASE_PATH to a
-# mounted persistent-disk location (for example /var/data/maintenance.db) in
-# production so accounts, settings, alerts, and work orders survive redeploys.
-DATABASE_PATH = Path(
-    os.getenv("MAINTAI_DATABASE_PATH")
-    or (Path(os.environ["RENDER_DISK_PATH"]) / "maintenance.db" if os.getenv("RENDER_DISK_PATH") else Path(__file__).resolve().with_name("maintenance.db"))
-)
+def _resolve_database_path() -> Path:
+    """Detect persistent disk path on Render (/var/data) or local development."""
+    if os.getenv("MAINTAI_DATABASE_PATH"):
+        return Path(os.environ["MAINTAI_DATABASE_PATH"])
+    if os.getenv("RENDER_DISK_PATH"):
+        return Path(os.environ["RENDER_DISK_PATH"]) / "maintenance.db"
+    # Auto-detect standard Render persistent disk mount
+    if os.path.isdir("/var/data"):
+        return Path("/var/data/maintenance.db")
+    return Path(__file__).resolve().parent / "maintenance.db"
+
+
+DATABASE_PATH = _resolve_database_path()
 
 
 def get_connection() -> sqlite3.Connection:
@@ -98,6 +104,22 @@ def initialise_database() -> None:
         for col, col_type in [("smtp_host", "TEXT DEFAULT 'smtp.gmail.com'"), ("smtp_port", "INTEGER DEFAULT 587"), ("smtp_username", "TEXT DEFAULT ''"), ("smtp_password", "TEXT DEFAULT ''")]:
             if col not in existing_cols:
                 connection.execute(f"ALTER TABLE notification_settings ADD COLUMN {col} {col_type}")
+
+        # Seed notification settings from environment variables if not already populated in DB
+        row = connection.execute("SELECT smtp_username, smtp_password, email_recipient FROM notification_settings WHERE id = 1").fetchone()
+        env_user = (os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or "").strip()
+        env_pwd = (os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or "").strip()
+        env_recipient = (os.getenv("ALERT_EMAIL") or os.getenv("EMAIL_RECIPIENT") or "").strip()
+        if row:
+            db_user, db_pwd, db_recipient = row[0] or "", row[1] or "", row[2] or ""
+            new_user = db_user or env_user
+            new_pwd = db_pwd or env_pwd
+            new_recipient = db_recipient or env_recipient
+            if new_user != db_user or new_pwd != db_pwd or new_recipient != db_recipient:
+                connection.execute(
+                    "UPDATE notification_settings SET smtp_username = ?, smtp_password = ?, email_recipient = ? WHERE id = 1",
+                    (new_user, new_pwd, new_recipient),
+                )
         connection.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -231,19 +253,20 @@ def get_notification_settings() -> dict:
 
 
 def save_notification_settings(email_enabled: bool, email_recipient: str, smtp_host: str = "smtp.gmail.com", smtp_port: int = 587, smtp_username: str = "", smtp_password: str = "") -> None:
-    """Save email preference and SMTP configuration."""
+    """Save email preference and SMTP configuration permanently."""
     with get_connection() as connection:
-        # If password is blank, preserve existing password
-        if not smtp_password:
-            existing = connection.execute("SELECT smtp_password FROM notification_settings WHERE id = 1").fetchone()
-            if existing and existing[0]:
-                smtp_password = existing[0]
+        existing = connection.execute("SELECT smtp_username, smtp_password FROM notification_settings WHERE id = 1").fetchone()
+        if existing:
+            if not smtp_username and existing[0]:
+                smtp_username = existing[0]
+            if not smtp_password and existing[1]:
+                smtp_password = existing[1]
 
         connection.execute("""
             UPDATE notification_settings
             SET email_enabled = ?, email_recipient = ?, smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_password = ?
             WHERE id = 1
-        """, (int(email_enabled), email_recipient, smtp_host, int(smtp_port), smtp_username, smtp_password))
+        """, (int(email_enabled), email_recipient.strip(), smtp_host.strip(), int(smtp_port), smtp_username.strip(), smtp_password.strip()))
 
 
 def create_user(name: str, email: str, password: str) -> bool:

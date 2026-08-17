@@ -10,6 +10,8 @@
 .forecast-risk { background: #fef3f2; border-left: 4px solid #f04438; }
 .forecast-normal h3, .forecast-risk h3 { margin: 0; }
 .forecast-values { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; font-size: .85rem; }
+.forecast-time-ist { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 6px; background: #e0f2fe; color: #0369a1; font-size: .8rem; font-weight: 600; }
+.app[data-theme="dark"] .forecast-time-ist { background: #0c4a6e; color: #7dd3fc; }
 .forecast-help { margin: 16px 0 0; color: #667085; font-size: .9rem; line-height: 1.5; }
 .forecast-message, .server-sender-note { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; background: #eff8ff; color: #175cd3; font-size: .9rem; line-height: 1.45; }
 @media (max-width: 850px) { .card-heading { display: block; } .card-heading button { margin-top: 15px; } }
