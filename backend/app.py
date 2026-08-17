@@ -340,14 +340,11 @@ MaintAI Smart IoT Predictive Maintenance System
     status = send_email(email, f"MaintAI Password Reset OTP: {otp}", email_body)
     
     if "sent" in status.lower():
-        return jsonify({"message": f"6-digit OTP sent to {email}. Please check your inbox and enter it below.", "otp_sent": True})
+        return jsonify({"message": f"A 6-digit OTP has been sent to your email ({email}). Please check your inbox and spam folder."})
     else:
-        # SMTP email delivery had an issue; still provide OTP so the user is never locked out
         return jsonify({
-            "message": f"OTP generated: {otp} (Note: SMTP email delivery status: {status}). You can use this OTP to reset your password.",
-            "otp": otp,
-            "otp_sent": False,
-        })
+            "error": f"Failed to deliver OTP to your email: {status}. Please ensure your Gmail App Password is configured properly in Settings."
+        }), 500
 
 
 @app.post("/reset-password")

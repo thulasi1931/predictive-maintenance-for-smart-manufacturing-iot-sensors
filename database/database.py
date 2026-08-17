@@ -30,13 +30,19 @@ def get_connection() -> sqlite3.Connection:
     return connection
 
 
+def get_current_ist_time() -> str:
+    """Return the current Indian Standard Time (IST, UTC+5:30) as YYYY-MM-DD HH:MM:SS."""
+    ist_tz = timezone(timedelta(hours=5, minutes=30))
+    return datetime.now(ist_tz).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def initialise_database() -> None:
     """Create the prediction table the first time the backend starts."""
     with get_connection() as connection:
         connection.execute("""
             CREATE TABLE IF NOT EXISTS predictions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT,
                 product_type TEXT NOT NULL,
                 air_temperature REAL NOT NULL,
                 process_temperature REAL NOT NULL,
@@ -53,7 +59,7 @@ def initialise_database() -> None:
         connection.execute("""
             CREATE TABLE IF NOT EXISTS alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT,
                 severity TEXT NOT NULL,
                 message TEXT NOT NULL,
                 failure_probability REAL NOT NULL,
@@ -64,7 +70,7 @@ def initialise_database() -> None:
         connection.execute("""
             CREATE TABLE IF NOT EXISTS work_orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT,
                 machine_id TEXT NOT NULL,
                 title TEXT NOT NULL,
                 priority TEXT NOT NULL,
@@ -77,7 +83,7 @@ def initialise_database() -> None:
         connection.execute("""
             CREATE TABLE IF NOT EXISTS notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                created_at TEXT,
                 channel TEXT NOT NULL,
                 recipient TEXT NOT NULL,
                 message TEXT NOT NULL,
@@ -105,21 +111,22 @@ def initialise_database() -> None:
             if col not in existing_cols:
                 connection.execute(f"ALTER TABLE notification_settings ADD COLUMN {col} {col_type}")
 
-        # Seed notification settings from environment variables if not already populated in DB
-        row = connection.execute("SELECT smtp_username, smtp_password, email_recipient FROM notification_settings WHERE id = 1").fetchone()
+        # Seed/update notification settings from environment variables into DB
         env_user = (os.getenv("SMTP_USERNAME") or os.getenv("EMAIL_USER") or "").strip()
         env_pwd = (os.getenv("SMTP_PASSWORD") or os.getenv("EMAIL_APP_PASSWORD") or "").strip()
         env_recipient = (os.getenv("ALERT_EMAIL") or os.getenv("EMAIL_RECIPIENT") or "").strip()
-        if row:
-            db_user, db_pwd, db_recipient = row[0] or "", row[1] or "", row[2] or ""
-            new_user = db_user or env_user
-            new_pwd = db_pwd or env_pwd
-            new_recipient = db_recipient or env_recipient
-            if new_user != db_user or new_pwd != db_pwd or new_recipient != db_recipient:
-                connection.execute(
-                    "UPDATE notification_settings SET smtp_username = ?, smtp_password = ?, email_recipient = ? WHERE id = 1",
-                    (new_user, new_pwd, new_recipient),
-                )
+        if env_user or env_pwd or env_recipient:
+            row = connection.execute("SELECT smtp_username, smtp_password, email_recipient FROM notification_settings WHERE id = 1").fetchone()
+            db_user = (row[0] if row else "") or ""
+            db_pwd = (row[1] if row else "") or ""
+            db_recipient = (row[2] if row else "") or ""
+            new_user = env_user or db_user
+            new_pwd = env_pwd or db_pwd
+            new_recipient = env_recipient or db_recipient
+            connection.execute(
+                "UPDATE notification_settings SET smtp_username = ?, smtp_password = ?, email_recipient = ? WHERE id = 1",
+                (new_user, new_pwd, new_recipient),
+            )
         connection.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,15 +162,16 @@ def initialise_database() -> None:
 
 
 def save_prediction(reading: dict, machine_failure: int, probability: float) -> None:
-    """Store one sensor reading and its model prediction."""
+    """Store one sensor reading and its model prediction with IST timestamp."""
     with get_connection() as connection:
         connection.execute("""
             INSERT INTO predictions (
-                machine_id, product_type, air_temperature, process_temperature,
+                created_at, machine_id, product_type, air_temperature, process_temperature,
                 rotational_speed, torque, tool_wear,
                 machine_failure, failure_probability
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
+            get_current_ist_time(),
             reading["Machine ID"], reading["Type"], reading["Air temperature [K]"],
             reading["Process temperature [K]"], reading["Rotational speed [rpm]"],
             reading["Torque [Nm]"], reading["Tool wear [min]"],
@@ -186,12 +194,12 @@ def get_recent_predictions(limit: int = 20, machine_id: str | None = None) -> li
 
 
 def save_alert(severity: str, message: str, probability: float, failure_type: str | None) -> None:
-    """Record a maintenance alert when the model finds material failure risk."""
+    """Record a maintenance alert with IST timestamp when the model finds material failure risk."""
     with get_connection() as connection:
         connection.execute("""
-            INSERT INTO alerts (severity, message, failure_probability, failure_type)
-            VALUES (?, ?, ?, ?)
-        """, (severity, message, probability, failure_type))
+            INSERT INTO alerts (created_at, severity, message, failure_probability, failure_type)
+            VALUES (?, ?, ?, ?, ?)
+        """, (get_current_ist_time(), severity, message, probability, failure_type))
 
 
 def get_recent_alerts(limit: int = 10) -> list[dict]:
@@ -207,9 +215,9 @@ def create_work_order(machine_id: str, title: str, priority: str, assigned_to: s
     """Create a maintenance task from a detected risk or technician review."""
     with get_connection() as connection:
         result = connection.execute("""
-            INSERT INTO work_orders (machine_id, title, priority, assigned_to, due_date, notes)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, (machine_id.upper(), title, priority, assigned_to, due_date, notes))
+            INSERT INTO work_orders (created_at, machine_id, title, priority, assigned_to, due_date, notes)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (get_current_ist_time(), machine_id.upper(), title, priority, assigned_to, due_date, notes))
     return int(result.lastrowid)
 
 
@@ -228,12 +236,12 @@ def update_work_order_status(work_order_id: int, status: str) -> bool:
 
 
 def save_notification(channel: str, recipient: str, message: str, severity: str, status: str) -> None:
-    """Save an email delivery attempt for the dashboard history."""
+    """Save an email delivery attempt with IST timestamp for the dashboard history."""
     with get_connection() as connection:
         connection.execute("""
-            INSERT INTO notifications (channel, recipient, message, alert_severity, delivery_status)
-            VALUES (?, ?, ?, ?, ?)
-        """, (channel, recipient, message, severity, status))
+            INSERT INTO notifications (created_at, channel, recipient, message, alert_severity, delivery_status)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (get_current_ist_time(), channel, recipient, message, severity, status))
 
 
 def get_recent_notifications(limit: int = 10) -> list[dict]:
@@ -274,8 +282,8 @@ def create_user(name: str, email: str, password: str) -> bool:
     try:
         with get_connection() as connection:
             connection.execute(
-                "INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)",
-                (name, email.lower(), generate_password_hash(password)),
+                "INSERT INTO users (created_at, name, email, password_hash) VALUES (?, ?, ?, ?)",
+                (get_current_ist_time(), name, email.lower(), generate_password_hash(password)),
             )
         return True
     except sqlite3.IntegrityError:
@@ -314,12 +322,8 @@ def update_user_password(email: str, password: str) -> None:
 
 
 def record_risk_streak(asset_id: str, is_high_risk: bool) -> tuple[int, bool, str]:
-    """Track consecutive high-risk readings and signal when email should be sent.
-
-    A single email is triggered when the same asset reaches three consecutive
-    high-risk readings (more than 2 times). A normal reading resets the streak.
-    """
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    """Track consecutive high-risk readings and signal when email should be sent in IST."""
+    now_str = get_current_ist_time()
     with get_connection() as connection:
         row = connection.execute(
             "SELECT consecutive_high_risk, email_sent_for_streak, updated_at FROM risk_streaks WHERE asset_id = ?",
