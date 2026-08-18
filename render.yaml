@@ -7,3 +7,8 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
+      - key: BREVO_API_KEY
+        sync: false
+      - key: FROM_EMAIL
+        sync: false
+
